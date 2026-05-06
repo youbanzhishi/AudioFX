@@ -45,7 +45,6 @@ jobs:
         id: set
         shell: bash
         run: |
-          # 确定要构建的插件列表
           plugins=""
           
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
@@ -55,20 +54,16 @@ jobs:
             else
               plugins=$(echo "$input" | tr ',' ' ' | xargs)
             fi
-            echo "📋 Manual trigger: building $plugins"
+            echo "Manual trigger: building $plugins"
           elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
             plugins=$(ls -d VC-*/ 2>/dev/null | grep -v "VC-Plugin-Template" | sed 's/\/$//' | tr '\n' ' ' | xargs)
-            echo "📋 PR trigger: building all"
+            echo "PR trigger: building all"
           else
-            # Push模式：检测变化的目录
             changed_files=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "")
-            
-            # 如果workflow文件变了，构建全部插件
             if echo "$changed_files" | grep -q ".github/workflows/"; then
               plugins=$(ls -d VC-*/ 2>/dev/null | grep -v "VC-Plugin-Template" | sed 's/\/$//' | tr '\n' ' ' | xargs)
-              echo "📋 Workflow changed: building all"
+              echo "Workflow changed: building all"
             else
-              # 检测哪些VC-*目录有变化
               for dir in VC-*/; do
                 [[ "$dir" == "VC-Plugin-Template/" ]] && continue
                 plugin="${dir%/}"
@@ -77,20 +72,19 @@ jobs:
                 fi
               done
               plugins=$(echo $plugins | xargs)
-              echo "📋 Changed plugins: ${plugins:-none}"
+              echo "Changed plugins: ${plugins:-none}"
             fi
           fi
 
           if [[ -z "$plugins" ]]; then
             echo "should_build=false" >> $GITHUB_OUTPUT
             echo "matrix={}" >> $GITHUB_OUTPUT
-            echo "📋 No plugin changes detected, skipping build"
+            echo "No plugin changes detected, skipping build"
           else
             echo "should_build=true" >> $GITHUB_OUTPUT
-            # 生成矩阵JSON: {"plugin":["VC-EQ","VC-Comp"]}
             json_arr=$(echo $plugins | tr ' ' '\n' | sort -u | python3 -c "import sys,json; print(json.dumps({'plugin':[l.strip() for l in sys.stdin if l.strip()]}))")
             echo "matrix=$json_arr" >> $GITHUB_OUTPUT
-            echo "📋 Matrix: $json_arr"
+            echo "Matrix: $json_arr"
           fi
 
   # ──────────────────────────────────────
@@ -176,11 +170,105 @@ jobs:
           retention-days: 30
 
   # ──────────────────────────────────────
-  # 阶段3: 汇总打包 + 发Release（仅手动触发且填写了tag时）
+  # 阶段2.5: CLI测试（仅在Linux上运行）
+  # ──────────────────────────────────────
+  test:
+    name: Test ${{ matrix.plugin }} (CLI)
+    needs: [detect, build]
+    if: needs.detect.outputs.should_build == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        plugin: ${{ fromJson(needs.detect.outputs.matrix).plugin }}
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            ninja-build libasound2-dev libx11-dev libxrandr-dev \
+            libxinerama-dev libxcursor-dev libxcomposite-dev \
+            libfreetype6-dev libfontconfig1-dev libgl1-mesa-dev \
+            libdbus-1-dev pkg-config sox
+
+      - name: Cache JUCE
+        id: cache-juce
+        uses: actions/cache@v4
+        with:
+          path: JUCE
+          key: juce-${{ runner.os }}-v${{ env.JUCE_VERSION }}
+
+      - name: Clone JUCE
+        if: steps.cache-juce.outputs.cache-hit != 'true'
+        shell: bash
+        run: git clone --depth 1 --branch ${{ env.JUCE_VERSION }} https://github.com/juce-framework/JUCE.git
+
+      - name: Build CLI
+        shell: bash
+        run: |
+          mkdir -p ${{ matrix.plugin }}/build
+          cd ${{ matrix.plugin }}/build
+          cmake .. -G Ninja -DJUCE_PATH=../../JUCE -DCMAKE_BUILD_TYPE=Release
+          cmake --build . --config Release
+
+      - name: Generate test signal
+        shell: bash
+        run: |
+          sox -n test_input.wav synth 3 sine 440 vol 0.5 channels 2
+          echo "Test signal generated"
+          soxi test_input.wav
+
+      - name: Run CLI test
+        shell: bash
+        run: |
+          CLI_BIN=$(find ${{ matrix.plugin }}/build -name "${{ matrix.plugin }}-CLI" -type f 2>/dev/null | head -1)
+          
+          if [ -z "$CLI_BIN" ]; then
+            echo "CLI binary not found for ${{ matrix.plugin }}, skipping CLI test"
+            exit 0
+          fi
+          
+          echo "Testing with: $CLI_BIN"
+          $CLI_BIN --help || true
+          
+          $CLI_BIN test_input.wav test_output.wav || {
+            echo "CLI execution failed"
+            exit 1
+          }
+          
+          if [ ! -f "test_output.wav" ]; then
+            echo "Output file not created"
+            exit 1
+          fi
+          
+          OUTPUT_SIZE=$(stat -c%s test_output.wav 2>/dev/null || echo 0)
+          if [ "$OUTPUT_SIZE" -lt 1000 ]; then
+            echo "Output file too small: $OUTPUT_SIZE bytes"
+            exit 1
+          fi
+          
+          soxi test_output.wav || {
+            echo "Output is not a valid WAV"
+            exit 1
+          }
+          
+          INPUT_DUR=$(soxi -D test_input.wav)
+          OUTPUT_DUR=$(soxi -D test_output.wav)
+          echo "Input: ${INPUT_DUR}s, Output: ${OUTPUT_DUR}s"
+          echo "CLI test passed for ${{ matrix.plugin }}!"
+
+  # ──────────────────────────────────────
+  # 阶段3: 汇总打包 + 发Release
   # ──────────────────────────────────────
   release:
     name: Package & Release
-    needs: [detect, build]
+    needs: [detect, build, test]
     if: needs.detect.outputs.should_build == 'true' && github.event_name == 'workflow_dispatch' && github.event.inputs.publish_release != ''
     runs-on: ubuntu-latest
     steps:
@@ -195,8 +283,6 @@ jobs:
         shell: bash
         run: |
           mkdir -p release
-
-          # macOS
           mkdir -p macos-pkg
           for dir in artifacts/*-macos-latest; do
             [ -d "$dir" ] || continue
@@ -205,8 +291,6 @@ jobs:
           if ls macos-pkg/*.vst3 2>/dev/null || ls macos-pkg/*.component 2>/dev/null; then
             cd macos-pkg && zip -r ../release/VocalChain-macOS.zip . && cd ..
           fi
-
-          # Windows
           mkdir -p windows-pkg
           for dir in artifacts/*-windows-latest; do
             [ -d "$dir" ] || continue
@@ -215,8 +299,6 @@ jobs:
           if ls windows-pkg/*.vst3 2>/dev/null; then
             cd windows-pkg && zip -r ../release/VocalChain-Windows.zip . && cd ..
           fi
-
-          # Linux
           mkdir -p linux-pkg
           for dir in artifacts/*-ubuntu-latest; do
             [ -d "$dir" ] || continue
@@ -225,7 +307,6 @@ jobs:
           if ls linux-pkg/*.vst3 2>/dev/null; then
             cd linux-pkg && zip -r ../release/VocalChain-Linux.zip . && cd ..
           fi
-
           echo "=== Packages ==="
           ls -lh release/
 
@@ -241,7 +322,7 @@ jobs:
             --notes "VocalChain plugin suite $TAG
 
           ## Downloads
-          - **VocalChain-macOS.zip** - All VST3 plugins for macOS (Apple Silicon + Intel)
+          - **VocalChain-macOS.zip** - All VST3 plugins for macOS
           - **VocalChain-Windows.zip** - All VST3 plugins for Windows
           - **VocalChain-Linux.zip** - All VST3 plugins for Linux
 
