@@ -15,7 +15,7 @@ add_subdirectory (${JUCE_PATH} JUCE-build)
 set (DSP_SOURCES Source/DSP/VCCompDSP.cpp)
 
 #==========================================
-# CLI Target
+# CLI Target (JUCE version)
 #==========================================
 add_executable (VC-Comp-CLI Source/CLI/main.cpp ${DSP_SOURCES})
 target_include_directories (VC-Comp-CLI PRIVATE ${JUCE_PATH}/modules)
@@ -33,6 +33,21 @@ set_target_properties (VC-Comp-CLI PROPERTIES
     CXX_STANDARD 17 
     CXX_STANDARD_REQUIRED ON 
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/CLI
+)
+
+#==========================================
+# Standalone CLI (no JUCE dependency)
+#==========================================
+add_executable (VC-Comp-CLI-Standalone Source/CLI_Standalone/main.cpp ${DSP_SOURCES})
+target_include_directories (VC-Comp-CLI-Standalone PRIVATE 
+    ${CMAKE_SOURCE_DIR}/Libs/dr_wav
+)
+target_compile_definitions (VC-Comp-CLI-Standalone PRIVATE VC_STANDALONE)
+target_link_libraries (VC-Comp-CLI-Standalone PRIVATE)  # No extra dependencies
+set_target_properties (VC-Comp-CLI-Standalone PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/CLI_Standalone
 )
 
 #==========================================

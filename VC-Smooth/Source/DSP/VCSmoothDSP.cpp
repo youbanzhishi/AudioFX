@@ -1,6 +1,57 @@
 #include "VCSmoothDSP.h"
+#include <algorithm>
+#include <cmath>
+#include <cstring>
 
+#ifdef VC_STANDALONE
+// Simple Cooley-Tukey FFT implementation for standalone mode
+void VCSmoothDSP::fftPerform(bool forward, float* real, float* imag, int size)
+{
+    // Bit reversal permutation
+    int j = 0;
+    for (int i = 0; i < size - 1; i++) {
+        if (i < j) {
+            std::swap(real[i], real[j]);
+            std::swap(imag[i], imag[j]);
+        }
+        int k = size / 2;
+        while (k <= j) {
+            j -= k;
+            k /= 2;
+        }
+        j += k;
+    }
+    
+    // Cooley-Tukey FFT
+    for (int len = 2; len <= size; len *= 2) {
+        float angle = (forward ? -2.0f : 2.0f) * VC_PI / len;
+        for (int i = 0; i < size; i += len) {
+            for (int k = 0; k < len / 2; k++) {
+                float wReal = std::cos(angle * k);
+                float wImag = std::sin(angle * k);
+                int evenIdx = i + k;
+                int oddIdx = i + k + len / 2;
+                float tReal = wReal * real[oddIdx] - wImag * imag[oddIdx];
+                float tImag = wReal * imag[oddIdx] + wImag * real[oddIdx];
+                real[oddIdx] = real[evenIdx] - tReal;
+                imag[oddIdx] = imag[evenIdx] - tImag;
+                real[evenIdx] = real[evenIdx] + tReal;
+                imag[evenIdx] = imag[evenIdx] + tImag;
+            }
+        }
+    }
+    
+    if (!forward) {
+        // Inverse FFT needs division by N
+        for (int i = 0; i < size; i++) {
+            real[i] /= size;
+            imag[i] /= size;
+        }
+    }
+}
+#else
 using namespace juce;
+#endif
 
 //==============================================================================
 // 工具函数
@@ -21,7 +72,9 @@ inline int VCSmoothDSP::freqToBin(float hz) const
 // 构造函数
 //==============================================================================
 VCSmoothDSP::VCSmoothDSP()
+#ifndef VC_STANDALONE
     : mFFT(int(std::log2(VCSmoothConfig::kFFTSize)))
+#endif
 {
     // 初始化缓冲区 (2帧 + 重叠)
     int bufferSize = VCSmoothConfig::kFFTSize * 2;
@@ -38,7 +91,11 @@ VCSmoothDSP::VCSmoothDSP()
     mWindow.resize(VCSmoothConfig::kFFTSize);
     for (int i = 0; i < VCSmoothConfig::kFFTSize; ++i)
     {
+#ifdef VC_STANDALONE
+        mWindow[i] = 0.5f * (1.0f - std::cos(2.0f * VC_PI * i / (VCSmoothConfig::kFFTSize - 1)));
+#else
         mWindow[i] = 0.5f * (1.0f - std::cos(2.0f * MathConstants<float>::pi * i / (VCSmoothConfig::kFFTSize - 1)));
+#endif
     }
     
     // 初始化频谱和增益数组
@@ -78,7 +135,7 @@ void VCSmoothDSP::prepare(double sampleRate, int blockSize)
     // 更新频率范围 bin
     mFreqLowBin = freqToBin(mParams.freqLow);
     mFreqHighBin = freqToBin(mParams.freqHigh);
-    mFreqHighBin = jmin(mFreqHighBin, VCSmoothConfig::kHalfFFTSize - 1);
+    mFreqHighBin = VC_JMIN(mFreqHighBin, VCSmoothConfig::kHalfFFTSize - 1);
 }
 
 //==============================================================================
@@ -106,7 +163,7 @@ void VCSmoothDSP::setParams(const Params& p)
     // 更新频率范围 bin
     mFreqLowBin = freqToBin(mParams.freqLow);
     mFreqHighBin = freqToBin(mParams.freqHigh);
-    mFreqHighBin = jmin(mFreqHighBin, VCSmoothConfig::kHalfFFTSize - 1);
+    mFreqHighBin = VC_JMIN(mFreqHighBin, VCSmoothConfig::kHalfFFTSize - 1);
 }
 
 VCSmoothDSP::Params VCSmoothDSP::getParams() const
@@ -181,7 +238,7 @@ void VCSmoothDSP::spectralProcessing(float* leftChannel, float* rightChannel, in
         // 检查是否有一个完整的帧需要处理
         int samplesNeeded = VCSmoothConfig::kFFTSize - mBufferPos;
         int samplesAvailable = numSamples - processedSamples;
-        int samplesToCopy = jmin(samplesNeeded, samplesAvailable);
+        int samplesToCopy = VC_JMIN(samplesNeeded, samplesAvailable);
         
         // 复制输入样本到缓冲区
         for (int i = 0; i < samplesToCopy; ++i)
@@ -221,7 +278,7 @@ void VCSmoothDSP::spectralProcessing(float* leftChannel, float* rightChannel, in
             }
             
             // 将输出缓冲区的样本写入输出
-            int outputSamples = jmin(VCSmoothConfig::kHopSize, numSamples);
+            int outputSamples = VC_JMIN(VCSmoothConfig::kHopSize, numSamples);
             for (int i = 0; i < outputSamples; ++i)
             {
                 leftChannel[i] = mOutputBufferL[i];
@@ -270,8 +327,11 @@ void VCSmoothDSP::processFFTFrame(float* leftFrame, float* rightFrame)
         mFFTImag[i] = 0.0f;
     }
     
-    // 执行 FFT
+#ifdef VC_STANDALONE
+    fftPerform(true, mFFTReal.data(), mFFTImag.data(), VCSmoothConfig::kFFTSize);
+#else
     mFFT.performRealOnlyForwardTransform(mFFTReal.data(), true);
+#endif
     
     // 获取左声道幅度谱
     std::vector<float> magL(VCSmoothConfig::kHalfFFTSize, 0.0f);
@@ -288,7 +348,11 @@ void VCSmoothDSP::processFFTFrame(float* leftFrame, float* rightFrame)
         mFFTReal[i] = rightFrame[i];
         mFFTImag[i] = 0.0f;
     }
+#ifdef VC_STANDALONE
+    fftPerform(true, mFFTReal.data(), mFFTImag.data(), VCSmoothConfig::kFFTSize);
+#else
     mFFT.performRealOnlyForwardTransform(mFFTReal.data(), true);
+#endif
     
     // 获取右声道幅度谱
     std::vector<float> magR(VCSmoothConfig::kHalfFFTSize, 0.0f);
@@ -339,19 +403,19 @@ void VCSmoothDSP::processFFTFrame(float* leftFrame, float* rightFrame)
         {
             // 超标量 (归一化到最大超标量)
             float excess = (ratioL - threshold) / (mParams.sharpness * 2.0f);
-            excess = jlimit(0.0f, 1.0f, excess);
+            excess = VC_JLIMIT(0.0f, 1.0f, excess);
             
             // 增益 = 1 - Depth × 超标量
             targetGainL[i] = 1.0f - mParams.depth * excess;
-            targetGainL[i] = jlimit(0.01f, 1.0f, targetGainL[i]);
+            targetGainL[i] = VC_JLIMIT(0.01f, 1.0f, targetGainL[i]);
         }
         
         if (ratioR > threshold)
         {
             float excess = (ratioR - threshold) / (mParams.sharpness * 2.0f);
-            excess = jlimit(0.0f, 1.0f, excess);
+            excess = VC_JLIMIT(0.0f, 1.0f, excess);
             targetGainR[i] = 1.0f - mParams.depth * excess;
-            targetGainR[i] = jlimit(0.01f, 1.0f, targetGainR[i]);
+            targetGainR[i] = VC_JLIMIT(0.01f, 1.0f, targetGainR[i]);
         }
     }
     
@@ -395,7 +459,11 @@ void VCSmoothDSP::processFFTFrame(float* leftFrame, float* rightFrame)
         mFFTReal[i * 2 + 1] = -mFFTReal[mirrorIdx + 1];
     }
     
+#ifdef VC_STANDALONE
+    fftPerform(false, mFFTReal.data(), mFFTImag.data(), VCSmoothConfig::kFFTSize);
+#else
     mFFT.performRealOnlyInverseTransform(mFFTReal.data());
+#endif
     
     // 复制左声道结果
     for (int i = 0; i < VCSmoothConfig::kFFTSize; ++i)
@@ -426,7 +494,11 @@ void VCSmoothDSP::processFFTFrame(float* leftFrame, float* rightFrame)
         mFFTReal[i * 2 + 1] = -mFFTReal[mirrorIdx + 1];
     }
     
+#ifdef VC_STANDALONE
+    fftPerform(false, mFFTReal.data(), mFFTImag.data(), VCSmoothConfig::kFFTSize);
+#else
     mFFT.performRealOnlyInverseTransform(mFFTReal.data());
+#endif
     
     // 复制右声道结果
     for (int i = 0; i < VCSmoothConfig::kFFTSize; ++i)

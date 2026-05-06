@@ -1,8 +1,26 @@
 #pragma once
 
-#include <juce_dsp/juce_dsp.h>
+#ifdef VC_STANDALONE
+// Standalone mode: use standard library math, no JUCE dependency
 #include <vector>
 #include <cmath>
+#include <algorithm>
+
+// Standalone constants
+constexpr float VC_PI = 3.14159265358979323846f;
+
+#define VC_DECLARE_NON_COPYABLE(x) // No-op in standalone
+#define VC_JMIN(a, b) std::min(a, b)
+#define VC_JMAX(a, b) std::max(a, b)
+#define VC_JLIMIT(lo, hi, x) std::clamp(x, lo, hi)
+#else
+// JUCE mode
+#include <juce_dsp/juce_dsp.h>
+#define VC_DECLARE_NON_COPYABLE(x) JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(x)
+#define VC_JMIN(a, b) juce::jmin(a, b)
+#define VC_JMAX(a, b) juce::jmax(a, b)
+#define VC_JLIMIT(lo, hi, x) juce::jlimit(lo, hi, x)
+#endif
 
 //==============================================================================
 // FFT 处理配置常量
@@ -113,9 +131,15 @@ private:
     // 处理位置指针
     int mBufferPos = 0;
     
+    //==============================================================================
     // FFT 对象
+#ifdef VC_STANDALONE
+    // Standalone FFT implementation
+    void fftPerform(bool forward, float* real, float* imag, int size);
+#else
     juce::dsp::FFT mFFT;
+#endif
     
     //==============================================================================
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(VCSmoothDSP)
+    VC_DECLARE_NON_COPYABLE(VCSmoothDSP)
 };

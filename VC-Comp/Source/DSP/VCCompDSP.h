@@ -1,8 +1,24 @@
 #pragma once
 
-#include <juce_dsp/juce_dsp.h>
+#ifdef VC_STANDALONE
+// Standalone mode: use standard library math, no JUCE dependency
 #include <vector>
 #include <cmath>
+#include <algorithm>
+
+// Standalone constants
+constexpr float VC_PI = 3.14159265358979323846f;
+
+#define VC_DECLARE_NON_COPYABLE(x) // No-op in standalone
+#define VC_JMIN(a, b) std::min(a, b)
+#define VC_JMAX(a, b) std::max(a, b)
+#else
+// JUCE mode
+#include <juce_dsp/juce_dsp.h>
+#define VC_DECLARE_NON_COPYABLE(x) JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(x)
+#define VC_JMIN(a, b) juce::jmin(a, b)
+#define VC_JMAX(a, b) juce::jmax(a, b)
+#endif
 
 //==============================================================================
 // Helper Classes (kept internal for DSP module)
@@ -110,14 +126,11 @@ class SCHPF
 public:
     void setFrequency(float freqHz, float sampleRate)
     {
-        if (freqHz <= 0.0f)
-        {
-            b0 = 1.0f; b1 = 0.0f; b2 = 0.0f;
-            a1 = 0.0f; a2 = 0.0f;
-            return;
-        }
-        
+#ifdef VC_STANDALONE
+        float omega = 2.0f * VC_PI * freqHz / sampleRate;
+#else
         float omega = 2.0f * juce::MathConstants<float>::pi * freqHz / sampleRate;
+#endif
         float sinOmega = std::sin(omega);
         float cosOmega = std::cos(omega);
         float alpha = sinOmega / (2.0f * 1.4142f);
@@ -157,7 +170,7 @@ public:
         if (!enabled) return;
         if (gainReductionDb < 0.1f) return;
         
-        float grNorm = juce::jmin(gainReductionDb / 20.0f, 1.0f);
+        float grNorm = VC_JMIN(gainReductionDb / 20.0f, 1.0f);
         
         for (int i = 0; i < 2; ++i)
         {
@@ -200,7 +213,7 @@ public:
         else
         {
             limiterActive = (peakHold > 0.0f);
-            limiterAmount = juce::jmax(0.0f, peakHold - 1.0f);
+            limiterAmount = VC_JMAX(0.0f, peakHold - 1.0f);
             return input;
         }
     }
@@ -293,5 +306,5 @@ private:
     
     const float mHPFFrequencies[5] = {0.0f, 60.0f, 100.0f, 200.0f, 500.0f};
     
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(VCCompDSP)
+    VC_DECLARE_NON_COPYABLE(VCCompDSP)
 };

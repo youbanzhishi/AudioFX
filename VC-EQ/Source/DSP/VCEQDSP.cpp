@@ -1,5 +1,10 @@
 #include "VCEQDSP.h"
 
+#ifdef VC_STANDALONE
+#include <algorithm>
+#include <cmath>
+#endif
+
 VCEQDSP::VCEQDSP()
 {
     for (int i = 0; i < kNumBands; ++i)
@@ -33,6 +38,14 @@ void VCEQDSP::prepare(double sampleRate, int blockSize)
     mInternalPtrs[0] = mInternalBuffer.data();
     mInternalPtrs[1] = mInternalBuffer.data() + blockSize;
     
+#ifdef VC_STANDALONE
+    // Initialize IIR states
+    for (int b = 0; b < kNumBands; ++b) {
+        for (int c = 0; c < 2; ++c) {
+            mIIRStates[b][c] = IIRState();
+        }
+    }
+#else
     // 准备所有滤波器
     juce::dsp::ProcessSpec spec;
     spec.sampleRate = sampleRate;
@@ -43,6 +56,7 @@ void VCEQDSP::prepare(double sampleRate, int blockSize)
     {
         band.filter.prepare(spec);
     }
+#endif
     
     updateFilterCoefficients(0);
     updateFilterCoefficients(1);
@@ -56,6 +70,11 @@ void VCEQDSP::process(float* left, float* right, int numSamples)
     if (!mEnabled)
         return;
     
+#ifdef VC_STANDALONE
+    // Standalone: process each band with manual IIR
+    processIIR(left, right, numSamples);
+#else
+    // JUCE: use AudioBlock
     // 复制到内部缓冲区
     for (int i = 0; i < numSamples; ++i)
     {
@@ -77,8 +96,10 @@ void VCEQDSP::process(float* left, float* right, int numSamples)
         left[i] = mInternalBuffer[i * 2];
         right[i] = mInternalBuffer[i * 2 + 1];
     }
+#endif
 }
 
+#ifndef VC_STANDALONE
 void VCEQDSP::process(juce::dsp::AudioBlock<float>& block)
 {
     if (!mEnabled)
@@ -93,13 +114,22 @@ void VCEQDSP::process(juce::dsp::AudioBlock<float>& block)
         mBands[i].filter.process(context);
     }
 }
+#endif
 
 void VCEQDSP::reset()
 {
+#ifdef VC_STANDALONE
+    for (int b = 0; b < kNumBands; ++b) {
+        for (int c = 0; c < 2; ++c) {
+            mIIRStates[b][c] = IIRState();
+        }
+    }
+#else
     for (auto& band : mBands)
     {
         band.filter.reset();
     }
+#endif
 }
 
 void VCEQDSP::setBand(int index, const BandParams& params)
@@ -145,6 +175,119 @@ void VCEQDSP::setEnabled(bool enabled)
     mEnabled = enabled;
 }
 
+#ifdef VC_STANDALONE
+void VCEQDSP::updateIIRCoefficients(int band, double sampleRate)
+{
+    auto& b = mBands[band];
+    float gainFactor = VCStandalone::decibelsToGain(b.gainDB);
+    float omega = 2.0f * VC_PI * static_cast<float>(b.frequency) / static_cast<float>(sampleRate);
+    float sinOmega = std::sin(omega);
+    float cosOmega = std::cos(omega);
+    float alpha = sinOmega / (2.0f * b.q);
+    
+    IIRState state;
+    
+    switch (b.type)
+    {
+        case FilterType::LowShelf:
+        {
+            float A = std::sqrt(gainFactor);
+            float sqrtA_alpha = 2.0f * A * alpha;
+            state.b0 = A * ((A + 1.0f) - (A - 1.0f) * cosOmega);
+            state.b1 = 2.0f * A * ((A - 1.0f) - (A + 1.0f) * cosOmega);
+            state.b2 = A * ((A + 1.0f) - (A - 1.0f) * cosOmega);
+            float a0 = (A + 1.0f) + (A - 1.0f) * cosOmega + sqrtA_alpha;
+            state.a1 = -2.0f * ((A - 1.0f) + (A + 1.0f) * cosOmega);
+            state.a2 = (A + 1.0f) + (A - 1.0f) * cosOmega - sqrtA_alpha;
+            state.b0 /= a0; state.b1 /= a0; state.b2 /= a0;
+            state.a1 /= a0; state.a2 /= a0;
+            break;
+        }
+        case FilterType::HighShelf:
+        {
+            float A = std::sqrt(gainFactor);
+            float sqrtA_alpha = 2.0f * A * alpha;
+            state.b0 = A * ((A + 1.0f) + (A - 1.0f) * cosOmega);
+            state.b1 = -2.0f * A * ((A - 1.0f) + (A + 1.0f) * cosOmega);
+            state.b2 = A * ((A + 1.0f) + (A - 1.0f) * cosOmega);
+            float a0 = (A + 1.0f) - (A - 1.0f) * cosOmega + sqrtA_alpha;
+            state.a1 = 2.0f * ((A - 1.0f) - (A + 1.0f) * cosOmega);
+            state.a2 = (A + 1.0f) - (A - 1.0f) * cosOmega - sqrtA_alpha;
+            state.b0 /= a0; state.b1 /= a0; state.b2 /= a0;
+            state.a1 /= a0; state.a2 /= a0;
+            break;
+        }
+        case FilterType::Parametric:
+        default:
+        {
+            state.b0 = 1.0f + alpha * gainFactor;
+            state.b1 = -2.0f * cosOmega;
+            state.b2 = 1.0f - alpha * gainFactor;
+            float a0 = 1.0f + alpha;
+            state.a1 = -2.0f * cosOmega;
+            state.a2 = 1.0f - alpha;
+            state.b0 /= a0; state.b1 /= a0; state.b2 /= a0;
+            state.a1 /= a0; state.a2 /= a0;
+            break;
+        }
+        case FilterType::LowPass:
+        {
+            state.b0 = (1.0f - cosOmega) / 2.0f;
+            state.b1 = 1.0f - cosOmega;
+            state.b2 = (1.0f - cosOmega) / 2.0f;
+            float a0 = 1.0f + alpha;
+            state.a1 = -2.0f * cosOmega;
+            state.a2 = 1.0f - alpha;
+            state.b0 /= a0; state.b1 /= a0; state.b2 /= a0;
+            state.a1 /= a0; state.a2 /= a0;
+            break;
+        }
+        case FilterType::HighPass:
+        {
+            state.b0 = (1.0f + cosOmega) / 2.0f;
+            state.b1 = -(1.0f + cosOmega);
+            state.b2 = (1.0f + cosOmega) / 2.0f;
+            float a0 = 1.0f + alpha;
+            state.a1 = -2.0f * cosOmega;
+            state.a2 = 1.0f - alpha;
+            state.b0 /= a0; state.b1 /= a0; state.b2 /= a0;
+            state.a1 /= a0; state.a2 /= a0;
+            break;
+        }
+    }
+    
+    for (int c = 0; c < 2; ++c) {
+        mIIRStates[band][c] = state;
+    }
+}
+
+void VCEQDSP::processIIR(float* left, float* right, int numSamples)
+{
+    float* channels[2] = { left, right };
+    
+    for (int band = 0; band < kNumBands; ++band)
+    {
+        if (!mBands[band].enabled)
+            continue;
+        
+        for (int ch = 0; ch < 2; ++ch)
+        {
+            IIRState& s = mIIRStates[band][ch];
+            float* data = channels[ch];
+            
+            for (int i = 0; i < numSamples; ++i)
+            {
+                float x = data[i];
+                float y = s.b0 * x + s.b1 * s.x1 + s.b2 * s.x2 - s.a1 * s.y1 - s.a2 * s.y2;
+                s.x2 = s.x1; s.x1 = x;
+                s.y2 = s.y1; s.y1 = y;
+                data[i] = y;
+            }
+        }
+    }
+}
+#endif
+
 void VCEQDSP::updateFilterCoefficients(int band)
 {
     if (band < 0 || band >= kNumBands)
@@ -167,6 +310,9 @@ void VCEQDSP::updateFilterCoefficients(int band)
     mCachedParams[band].type = b.type;
     mCachedParams[band].enabled = b.enabled;
     
+#ifdef VC_STANDALONE
+    updateIIRCoefficients(band, mSampleRate);
+#else
     float gainFactor = juce::Decibels::decibelsToGain(b.gainDB);
     
     switch (b.type)
@@ -197,4 +343,5 @@ void VCEQDSP::updateFilterCoefficients(int band)
                 mSampleRate, b.frequency, b.q, gainFactor);
             break;
     }
+#endif
 }

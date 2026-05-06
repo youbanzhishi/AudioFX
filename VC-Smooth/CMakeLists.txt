@@ -15,7 +15,7 @@ add_subdirectory (${JUCE_PATH} JUCE-build)
 set (DSP_SOURCES Source/DSP/VCSmoothDSP.cpp)
 
 #==============================================================================
-# CLI Target
+# CLI Target (JUCE version)
 #==============================================================================
 add_executable (VC-Smooth-CLI Source/CLI/main.cpp ${DSP_SOURCES})
 target_include_directories (VC-Smooth-CLI PRIVATE ${JUCE_PATH}/modules)
@@ -33,6 +33,21 @@ set_target_properties (VC-Smooth-CLI PROPERTIES
     CXX_STANDARD 17 
     CXX_STANDARD_REQUIRED ON 
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/CLI)
+
+#==============================================================================
+# Standalone CLI (no JUCE dependency)
+#==============================================================================
+add_executable (VC-Smooth-CLI-Standalone Source/CLI_Standalone/main.cpp ${DSP_SOURCES})
+target_include_directories (VC-Smooth-CLI-Standalone PRIVATE 
+    ${CMAKE_SOURCE_DIR}/Libs/dr_wav
+)
+target_compile_definitions (VC-Smooth-CLI-Standalone PRIVATE VC_STANDALONE)
+target_link_libraries (VC-Smooth-CLI-Standalone PRIVATE)  # No extra dependencies
+set_target_properties (VC-Smooth-CLI-Standalone PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/CLI_Standalone
+)
 
 #==============================================================================
 # VST3 Plugin Target (默认关闭，需要 -DBUILD_VST3=ON 开启)

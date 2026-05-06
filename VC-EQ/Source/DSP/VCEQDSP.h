@@ -1,6 +1,25 @@
 #pragma once
 
+#ifdef VC_STANDALONE
+// Standalone mode: use standard library math, no JUCE dependency
+#include <vector>
+#include <cmath>
+#include <algorithm>
+
+// Standalone constants
+constexpr float VC_PI = 3.14159265358979323846f;
+
+namespace VCStandalone {
+    inline float decibelsToGain(float dB) {
+        return std::pow(10.0f, dB / 20.0f);
+    }
+}
+#define VC_DECLARE_NON_COPYABLE(x) // No-op in standalone
+#else
+// JUCE mode
 #include <juce_dsp/juce_dsp.h>
+#define VC_DECLARE_NON_COPYABLE(x) JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(x)
+#endif
 
 class VCEQDSP
 {
@@ -33,7 +52,9 @@ public:
     
     void prepare(double sampleRate, int blockSize);
     void process(float* left, float* right, int numSamples);
+#ifndef VC_STANDALONE
     void process(juce::dsp::AudioBlock<float>& block);
+#endif
     void reset();
     void setBand(int index, const BandParams& params);
     BandParams getBand(int index) const;
@@ -47,7 +68,9 @@ private:
     
     struct BandFilter
     {
+#ifndef VC_STANDALONE
         juce::dsp::IIR::Filter<float> filter;
+#endif
         bool enabled = true;
         FilterType type = FilterType::Parametric;
         float frequency = 1000.0f;
@@ -74,5 +97,17 @@ private:
     std::vector<float> mInternalBuffer;
     std::vector<float*> mInternalPtrs;
     
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(VCEQDSP)
+    // Standalone IIR state (replaces juce::dsp::IIR::Filter)
+#ifdef VC_STANDALONE
+    struct IIRState {
+        float b0 = 1.0f, b1 = 0.0f, b2 = 0.0f;
+        float a1 = 0.0f, a2 = 0.0f;
+        float x1 = 0.0f, x2 = 0.0f, y1 = 0.0f, y2 = 0.0f;
+    };
+    IIRState mIIRStates[kNumBands][2]; // [band][channel]
+    void updateIIRCoefficients(int band, double sampleRate);
+    void processIIR(float* left, float* right, int numSamples);
+#endif
+    
+    VC_DECLARE_NON_COPYABLE(VCEQDSP)
 };
