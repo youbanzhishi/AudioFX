@@ -3,9 +3,6 @@ name: Build VST3 Plugins
 on:
   push:
     branches: [ main ]
-    paths:
-      - 'VC-*/**'
-      - '.github/workflows/build.yml'
   pull_request:
     branches: [ main ]
   workflow_dispatch:
@@ -15,11 +12,10 @@ on:
         required: false
         default: 'all'
       publish_release:
-        description: 'Publish as GitHub Release? (tag required, e.g. v1.0.0)'
+        description: 'Publish as GitHub Release? (enter tag e.g. v1.0.0, leave empty to skip)'
         required: false
         default: ''
 
-# 同一时间只允许一个构建运行，后来的排队等
 concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: false
@@ -29,85 +25,75 @@ env:
 
 jobs:
   # ──────────────────────────────────────
-  # 阶段1: 检测哪些插件需要构建
+  # 阶段1: 检测哪些插件需要构建，生成矩阵JSON
   # ──────────────────────────────────────
   detect:
     name: Detect changes
     runs-on: ubuntu-latest
     outputs:
-      plugins: ${{ steps.filter.outputs.plugins }}
-      should_build: ${{ steps.filter.outputs.should_build }}
+      matrix: ${{ steps.set.outputs.matrix }}
+      should_build: ${{ steps.set.outputs.should_build }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Detect changed plugins
-        id: filter
+        id: set
         shell: bash
         run: |
-          # 手动触发模式
+          # 确定要构建的插件列表
+          plugins=""
+          
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             input="${{ github.event.inputs.plugins }}"
             if [[ "$input" == "all" ]]; then
-              # 扫描所有VC-*目录
-              plugins=$(ls -d VC-*/ 2>/dev/null | sed 's/\/$//' | tr '\n' ',' | sed 's/,$//')
+              plugins=$(ls -d VC-*/ 2>/dev/null | sed 's/\/$//' | tr '\n' ' ' | xargs)
             else
-              plugins="$input"
+              plugins=$(echo "$input" | tr ',' ' ' | xargs)
             fi
-            echo "plugins=$plugins" >> $GITHUB_OUTPUT
-            echo "should_build=true" >> $GITHUB_OUTPUT
-            echo "📋 Manual trigger: building $plugins"
-            exit 0
-          fi
-
-          # PR模式：构建全部
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            plugins=$(ls -d VC-*/ 2>/dev/null | sed 's/\/$//' | tr '\n' ',' | sed 's/,$//')
-            echo "plugins=$plugins" >> $GITHUB_OUTPUT
-            echo "should_build=true" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-
-          # Push模式：检测变化的VC-*目录
-          plugins=""
-          changed_files=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "")
-          # 如果workflow文件本身变了，构建全部
-          if echo "$changed_files" | grep -q ".github/workflows/build.yml"; then
-            plugins=$(ls -d VC-*/ 2>/dev/null | sed 's/\/$//' | tr '\n' ',' | sed 's/,$//')
-            echo "📋 Workflow changed: building all"
+          elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            plugins=$(ls -d VC-*/ 2>/dev/null | sed 's/\/$//' | tr '\n' ' ' | xargs)
           else
-            for dir in VC-*/; do
-              plugin="${dir%/}"
-              if echo "$changed_files" | grep -q "^${plugin}/"; then
-                if [[ -n "$plugins" ]]; then
-                  plugins="${plugins},${plugin}"
-                else
-                  plugins="${plugin}"
+            # Push模式：检测变化的VC-*目录
+            changed_files=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || git diff --name-only --cached 2>/dev/null || echo "")
+            
+            # 如果workflow文件本身变了，构建全部
+            if echo "$changed_files" | grep -q ".github/workflows/build.yml"; then
+              plugins=$(ls -d VC-*/ 2>/dev/null | sed 's/\/$//' | tr '\n' ' ' | xargs)
+            else
+              for dir in VC-*/; do
+                plugin="${dir%/}"
+                if echo "$changed_files" | grep -q "^${plugin}/"; then
+                  plugins="$plugins $plugin"
                 fi
-              fi
-            done
+              done
+              plugins=$(echo $plugins | xargs)
+            fi
           fi
 
           if [[ -z "$plugins" ]]; then
             echo "should_build=false" >> $GITHUB_OUTPUT
-            echo "plugins=" >> $GITHUB_OUTPUT
+            echo "matrix={}" >> $GITHUB_OUTPUT
             echo "📋 No plugin changes detected, skipping build"
           else
             echo "should_build=true" >> $GITHUB_OUTPUT
-            echo "plugins=$plugins" >> $GITHUB_OUTPUT
-            echo "📋 Changed plugins: $plugins"
+            # 生成矩阵JSON: {"plugin":["VC-EQ","VC-Comp"]}
+            json_arr=$(echo $plugins | tr ' ' '\n' | sort -u | python3 -c "import sys,json; print(json.dumps({'plugin':[l.strip() for l in sys.stdin if l.strip()]}))")
+            echo "matrix=$json_arr" >> $GITHUB_OUTPUT
+            echo "📋 Building: $plugins"
           fi
 
   # ──────────────────────────────────────
-  # 阶段2: 每个插件独立构建（三平台并行）
+  # 阶段2: 每个插件 × 每个平台独立构建
   # ──────────────────────────────────────
   build:
-    name: Build ${{ matrix.plugin }} (${{ matrix.os }})
+    name: ${{ matrix.plugin }} (${{ matrix.os }})
     needs: detect
     if: needs.detect.outputs.should_build == 'true'
     strategy:
       fail-fast: false
       matrix:
-        plugin: ${{ fromJson(format('["{0}"]', join(split(needs.detect.outputs.plugins, ','), '","'))) }}
+        plugin: ${{ fromJson(needs.detect.outputs.matrix).plugin }}
+        os: [macos-latest, windows-latest, ubuntu-latest]
         include:
           - os: macos-latest
             cmake_generator: "Ninja"
@@ -122,33 +108,22 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # macOS 依赖
       - name: Install dependencies (macOS)
-        if: runner.os == 'macOS'
+        if: runner.os == 'MacOS'
         shell: bash
         run: brew install ninja
 
-      # Linux 依赖
       - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
         shell: bash
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            ninja-build \
-            libasound2-dev \
-            libx11-dev \
-            libxrandr-dev \
-            libxinerama-dev \
-            libxcursor-dev \
-            libxcomposite-dev \
-            libfreetype6-dev \
-            libfontconfig1-dev \
-            libgl1-mesa-dev \
-            libdbus-1-dev \
-            pkg-config
+            ninja-build libasound2-dev libx11-dev libxrandr-dev \
+            libxinerama-dev libxcursor-dev libxcomposite-dev \
+            libfreetype6-dev libfontconfig1-dev libgl1-mesa-dev \
+            libdbus-1-dev pkg-config
 
-      # 缓存 JUCE
       - name: Cache JUCE
         id: cache-juce
         uses: actions/cache@v4
@@ -161,7 +136,6 @@ jobs:
         shell: bash
         run: git clone --depth 1 --branch ${{ env.JUCE_VERSION }} https://github.com/juce-framework/JUCE.git
 
-      # 构建
       - name: Configure ${{ matrix.plugin }}
         shell: bash
         run: |
@@ -175,16 +149,12 @@ jobs:
           cd ${{ matrix.plugin }}/build
           cmake --build . --config Release
 
-      # 列出产物（诊断用）
-      - name: List build artefacts
+      - name: List artefacts
         if: always()
         shell: bash
-        run: |
-          echo "=== ${{ matrix.plugin }} artefacts ==="
-          find ${{ matrix.plugin }}/build -name "*.vst3" -o -name "*.component" -o -name "*.dll" 2>/dev/null || echo "none found"
+        run: find ${{ matrix.plugin }}/build \( -name "*.vst3" -o -name "*.component" -o -name "*.dll" \) 2>/dev/null || echo "none found"
 
-      # 上传产物
-      - name: Upload ${{ matrix.plugin }} Artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -195,12 +165,12 @@ jobs:
           retention-days: 30
 
   # ──────────────────────────────────────
-  # 阶段3: 汇总打包（仅打tag/手动指定时）
+  # 阶段3: 汇总打包 + 发Release（仅手动触发且填写了tag时）
   # ──────────────────────────────────────
-  collect:
-    name: Collect & Package
+  release:
+    name: Package & Release
     needs: [detect, build]
-    if: needs.detect.outputs.should_build == 'true' && (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_release != '')
+    if: needs.detect.outputs.should_build == 'true' && github.event_name == 'workflow_dispatch' && github.event.inputs.publish_release != ''
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -209,52 +179,46 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts/
-          merge-multiple: false
 
       - name: Package by platform
         shell: bash
         run: |
           mkdir -p release
 
-          # macOS: 收集所有 .vst3 和 .component
-          mkdir -p macos-package
+          # macOS
+          mkdir -p macos-pkg
           for dir in artifacts/*-macos-latest; do
-            find "$dir" \( -name "*.vst3" -o -name "*.component" \) -exec cp -r {} macos-package/ \;
+            [ -d "$dir" ] || continue
+            find "$dir" \( -name "*.vst3" -o -name "*.component" \) -exec cp -r {} macos-pkg/ \;
           done
-          if ls macos-package/*.vst3 2>/dev/null || ls macos-package/*.component 2>/dev/null; then
-            cd macos-package && zip -r ../release/VocalChain-macOS.zip . && cd ..
+          if ls macos-pkg/*.vst3 2>/dev/null || ls macos-pkg/*.component 2>/dev/null; then
+            cd macos-pkg && zip -r ../release/VocalChain-macOS.zip . && cd ..
           fi
 
-          # Windows: 收集所有 .vst3
-          mkdir -p windows-package
+          # Windows
+          mkdir -p windows-pkg
           for dir in artifacts/*-windows-latest; do
-            find "$dir" -name "*.vst3" -exec cp -r {} windows-package/ \;
+            [ -d "$dir" ] || continue
+            find "$dir" -name "*.vst3" -exec cp -r {} windows-pkg/ \;
           done
-          if ls windows-package/*.vst3 2>/dev/null; then
-            cd windows-package && zip -r ../release/VocalChain-Windows.zip . && cd ..
+          if ls windows-pkg/*.vst3 2>/dev/null; then
+            cd windows-pkg && zip -r ../release/VocalChain-Windows.zip . && cd ..
           fi
 
-          # Linux: 收集所有 .vst3
-          mkdir -p linux-package
+          # Linux
+          mkdir -p linux-pkg
           for dir in artifacts/*-ubuntu-latest; do
-            find "$dir" -name "*.vst3" -exec cp -r {} linux-package/ \;
+            [ -d "$dir" ] || continue
+            find "$dir" -name "*.vst3" -exec cp -r {} linux-pkg/ \;
           done
-          if ls linux-package/*.vst3 2>/dev/null; then
-            cd linux-package && zip -r ../release/VocalChain-Linux.zip . && cd ..
+          if ls linux-pkg/*.vst3 2>/dev/null; then
+            cd linux-pkg && zip -r ../release/VocalChain-Linux.zip . && cd ..
           fi
 
-          echo "=== Release packages ==="
+          echo "=== Packages ==="
           ls -lh release/
 
-      - name: Upload release artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: VocalChain-Release-Packages
-          path: release/
-          retention-days: 90
-
       - name: Create GitHub Release
-        if: github.event.inputs.publish_release != ''
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -266,8 +230,8 @@ jobs:
             --notes "VocalChain plugin suite $TAG
 
           ## Downloads
-          - **VocalChain-macOS.zip** - VST3 plugins for macOS
-          - **VocalChain-Windows.zip** - VST3 plugins for Windows
-          - **VocalChain-Linux.zip** - VST3 plugins for Linux
+          - **VocalChain-macOS.zip** - All VST3 plugins for macOS (Apple Silicon + Intel)
+          - **VocalChain-Windows.zip** - All VST3 plugins for Windows
+          - **VocalChain-Linux.zip** - All VST3 plugins for Linux
 
           Built with JUCE ${{ env.JUCE_VERSION }}"
