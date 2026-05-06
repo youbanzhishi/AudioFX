@@ -1,5 +1,5 @@
 # VC-Comp VST3 Plugin - Compression with Sidechain
-# 对标 Waves Renaissance Compressor
+# DSP/CLI/VST3 Three-Layer Architecture
 
 cmake_minimum_required (VERSION 3.22)
 
@@ -11,7 +11,33 @@ project (VC-Comp VERSION 1.0.0 LANGUAGES C CXX)
 # 导入 JUCE
 add_subdirectory (${JUCE_PATH} JUCE-build)
 
-# JUCE 插件配置
+# DSP 源文件
+set (DSP_SOURCES Source/DSP/VCCompDSP.cpp)
+
+#==========================================
+# CLI Target
+#==========================================
+add_executable (VC-Comp-CLI Source/CLI/main.cpp ${DSP_SOURCES})
+target_include_directories (VC-Comp-CLI PRIVATE ${JUCE_PATH}/modules)
+target_link_libraries (VC-Comp-CLI PRIVATE 
+    juce::juce_audio_formats 
+    juce::juce_dsp 
+    juce::juce_core
+)
+target_compile_definitions (VC-Comp-CLI PRIVATE 
+    JUCE_WEB_BROWSER=0 
+    JUCE_USE_GTK=0 
+    JUCE_USE_CURL=0
+)
+set_target_properties (VC-Comp-CLI PROPERTIES 
+    CXX_STANDARD 17 
+    CXX_STANDARD_REQUIRED ON 
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/CLI
+)
+
+#==========================================
+# VST3 Plugin Target
+#==========================================
 juce_add_plugin (VC-Comp
     FORMATS VST3
     NAME "VC-Comp"
@@ -23,10 +49,11 @@ juce_add_plugin (VC-Comp
     PRODUCT_NAME "VC-Comp"
 )
 
-# 包含源文件
+# 包含源文件 (DSP + VST3)
 target_sources (VC-Comp PRIVATE
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
+    ${DSP_SOURCES}
 )
 
 # 链接 JUCE 模块

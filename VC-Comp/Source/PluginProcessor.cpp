@@ -171,46 +171,25 @@ void VCCompAudioProcessor::parameterChanged(const String& parameterID, float new
 void VCCompAudioProcessor::updateParameters()
 {
     currentParams = (activeParamSet == 0) ? paramSetA : paramSetB;
-    bypassed = apvts.getRawParameterValue(ParameterIDs::bypass)->load() > 0.5f;
-    scListenActive = apvts.getRawParameterValue(ParameterIDs::scListen)->load() > 0.5f;
 }
 
 //==============================================================================
-// Buses Layout - Support Sidechain
+// Buses Layout
 //==============================================================================
 bool VCCompAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
 {
-    if (layouts.inputBuses.size() == 1 && layouts.outputBuses.size() == 1)
-    {
-        return (layouts.inputBuses[0] == AudioChannelSet::mono() ||
-                layouts.inputBuses[0] == AudioChannelSet::stereo()) &&
-               (layouts.outputBuses[0] == AudioChannelSet::mono() ||
-                layouts.outputBuses[0] == AudioChannelSet::stereo());
-    }
+    // Require stereo input/output
+    if (layouts.getMainInputChannelSet() != AudioChannelSet::stereo())
+        return false;
+    if (layouts.getMainOutputChannelSet() != AudioChannelSet::stereo())
+        return false;
     
-    if (layouts.inputBuses.size() == 2 && layouts.outputBuses.size() == 1)
-    {
-        if (layouts.inputBuses[0] != layouts.outputBuses[0]) return false;
-        if (layouts.inputBuses[1] != layouts.inputBuses[0]) return false;
-        return (layouts.outputBuses[0] == AudioChannelSet::mono() ||
-                layouts.outputBuses[0] == AudioChannelSet::stereo());
-    }
+    // Sidechain can be stereo or empty
+    auto& scSet = layouts.getInputChannelSet(1);
+    if (scSet != AudioChannelSet::stereo() && !scSet.isDisabled())
+        return false;
     
-    return false;
-}
-
-//==============================================================================
-// Get Knee Width based on mode
-//==============================================================================
-static float getKneeWidth(int kneeMode, float gainReduction)
-{
-    switch (kneeMode)
-    {
-        case 0: return 0.0f;
-        case 1: return 6.0f;
-        case 2: return jmap(gainReduction, 0.0f, -12.0f, 6.0f, 0.0f);
-        default: return 6.0f;
-    }
+    return true;
 }
 
 //==============================================================================
@@ -220,18 +199,33 @@ void VCCompAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
     currentSampleRate = sampleRate;
     
-    int numChannels = getTotalNumInputChannels();
-    channels.resize(numChannels);
-    scHPFs.resize(numChannels);
+    // Prepare DSP
+    dsp.prepare(sampleRate, samplesPerBlock);
     
-    for (int ch = 0; ch < numChannels; ++ch)
-    {
-        channels[ch].reset();
-        channels[ch].envelopeFollower.setAttackTime(currentParams.attack, sampleRate);
-        channels[ch].envelopeFollower.setReleaseTime(currentParams.release, sampleRate);
-    }
+    // Prepare SC HPFs
+    scHPFs.resize(2);
+    for (auto& hpf : scHPFs)
+        hpf.reset();
     
-    vclimiter.reset();
+    // Update parameters
+    VCCompDSP::Params p;
+    p.threshold = currentParams.threshold;
+    p.ratio = currentParams.ratio;
+    p.attack = currentParams.attack;
+    p.release = currentParams.release;
+    p.gain = currentParams.gain;
+    p.releaseMode = currentParams.releaseMode;
+    p.compBehavior = currentParams.compBehavior;
+    p.kneeMode = currentParams.kneeMode;
+    p.character = currentParams.character;
+    p.mix = currentParams.mix;
+    p.trim = currentParams.trim;
+    dsp.setParams(p);
+    
+    // Reset levels
+    inputLevelL = inputLevelR = 0.0f;
+    outputLevelL = outputLevelR = 0.0f;
+    gainReductionDB = 0.0f;
 }
 
 //==============================================================================
@@ -239,9 +233,7 @@ void VCCompAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 //==============================================================================
 void VCCompAudioProcessor::releaseResources()
 {
-    for (auto& ch : channels)
-        ch.reset();
-    vclimiter.reset();
+    dsp.reset();
 }
 
 //==============================================================================
@@ -254,11 +246,7 @@ void VCCompAudioProcessor::processBlock(AudioBuffer<float>& buffer, MidiBuffer&)
     int numSamples = buffer.getNumSamples();
     int numChannels = buffer.getNumChannels();
     
-    // Copy dry signal for wet/dry mix
-    AudioBuffer<float> dryBuffer = buffer;
-    
     // SC Listen mode - copy sidechain to output
-    bool hasSidechain = false;
     if (scListenActive)
     {
         auto scBuffer = getBusBuffer(buffer, true, 1);
@@ -272,35 +260,61 @@ void VCCompAudioProcessor::processBlock(AudioBuffer<float>& buffer, MidiBuffer&)
             }
             return;
         }
-        hasSidechain = true;
     }
     
-    // Determine detection source - use copy for sidechain
-    AudioBuffer<float> scCopy;
+    // Determine detection source
+    AudioBuffer<float>* detectionBuffer = nullptr;
+    bool hasSidechain = false;
+    
     if (currentParams.scSource == 1)
     {
         auto scBuffer = getBusBuffer(buffer, true, 1);
         if (scBuffer.getNumChannels() > 0)
         {
-            scCopy = scBuffer;
+            detectionBuffer = &scBuffer;
             hasSidechain = true;
         }
     }
     
-    AudioBuffer<float>* detectionBuffer = nullptr;
-    if (currentParams.scSource == 1 && hasSidechain)
-        detectionBuffer = &scCopy;
-    else
+    if (!detectionBuffer)
         detectionBuffer = &buffer;
     
-    // Update SC HPF frequencies
+    // Update SC HPF
     float hpfFreq = hpfFrequencies[currentParams.scHPF];
     for (int ch = 0; ch < numChannels && ch < (int)scHPFs.size(); ++ch)
         scHPFs[ch].setFrequency(hpfFreq, currentSampleRate);
     
-    // Process each sample
+    // Get input levels
     for (int sample = 0; sample < numSamples; ++sample)
     {
+        for (int ch = 0; ch < numChannels; ++ch)
+        {
+            float inputLevel = std::abs(buffer.getSample(ch, sample));
+            if (ch == 0) inputLevelL = jmax(inputLevelL * 0.95f, inputLevel);
+            else inputLevelR = jmax(inputLevelR * 0.95f, inputLevel);
+        }
+    }
+    
+    // Update DSP params
+    VCCompDSP::Params p;
+    p.threshold = currentParams.threshold;
+    p.ratio = currentParams.ratio;
+    p.attack = currentParams.attack;
+    p.release = currentParams.release;
+    p.gain = currentParams.gain;
+    p.releaseMode = currentParams.releaseMode;
+    p.compBehavior = currentParams.compBehavior;
+    p.kneeMode = currentParams.kneeMode;
+    p.character = currentParams.character;
+    p.mix = currentParams.mix;
+    p.trim = currentParams.trim;
+    dsp.setParams(p);
+    dsp.setEnabled(!bypassed);
+    
+    // Process samples with sidechain detection
+    for (int sample = 0; sample < numSamples; ++sample)
+    {
+        // Get detection signals (apply HPF if needed)
         std::vector<float> detectionSignal(numChannels);
         for (int ch = 0; ch < numChannels; ++ch)
         {
@@ -313,86 +327,129 @@ void VCCompAudioProcessor::processBlock(AudioBuffer<float>& buffer, MidiBuffer&)
             detectionSignal[ch] = sig;
         }
         
+        // Calculate RMS detection
         float totalDetection = 0.0f;
         for (float s : detectionSignal)
             totalDetection += s * s;
         totalDetection = std::sqrt(totalDetection / (float)numChannels);
         float detectionDb = linearToDb(totalDetection + 1e-10f);
         
+        // Process each channel
         for (int ch = 0; ch < numChannels; ++ch)
         {
-            auto& proc = channels[ch];
             float inputSample = buffer.getSample(ch, sample);
-            float drySample = dryBuffer.getSample(ch, sample);
+            float drySample = inputSample;
             
-            float inputLevel = std::abs(inputSample);
-            if (ch == 0) inputLevelL = jmax(inputLevelL * 0.95f, inputLevel);
-            else inputLevelR = jmax(inputLevelR * 0.95f, inputLevel);
+            // Calculate envelope for GR
+            float envelope = 0.0f;
+            for (float s : detectionSignal)
+                envelope += s * s;
+            envelope = std::sqrt(envelope / (float)numChannels);
+            float envelopeDb = linearToDb(envelope + 1e-10f);
             
-            proc.envelopeFollower.setAttackTime(currentParams.attack, currentSampleRate);
-            
+            // Get effective release time
             float effectiveRelease = currentParams.release;
             
+            // Apply ARC if needed
             if (currentParams.releaseMode == 0)
             {
-                float arcFactor = proc.arcCalculator.calculateARC(
-                    detectionDb, proc.gainReduction, currentParams.release);
-                effectiveRelease *= arcFactor;
+                // ARC calculation would go here
+                // For now, use simple adaptive release
+                if (envelopeDb > currentParams.threshold + 10.0f)
+                    effectiveRelease *= 0.5f;
+                else if (envelopeDb < currentParams.threshold - 10.0f)
+                    effectiveRelease *= 1.5f;
             }
             
-            if (currentParams.compBehavior == 0)
+            // Apply behavior-specific release modifiers
+            if (currentParams.compBehavior == 0) // Electro
             {
-                if (proc.gainReduction < 3.0f)
+                if (gainReductionDB < 3.0f)
                     effectiveRelease *= 0.3f;
                 else
                     effectiveRelease *= 2.0f;
             }
-            else
+            else // Opto
             {
-                if (proc.gainReduction < 3.0f)
+                if (gainReductionDB < 3.0f)
                     effectiveRelease *= 3.0f;
                 else
                     effectiveRelease *= 0.5f;
             }
             
-            proc.currentRelease = effectiveRelease;
-            proc.envelopeFollower.setReleaseTime(effectiveRelease, currentSampleRate);
+            // Calculate gain reduction
+            float kneeWidth = 6.0f;
+            if (currentParams.kneeMode == 0) kneeWidth = 0.0f; // Hard
+            else if (currentParams.kneeMode == 2) // Auto
+                kneeWidth = 6.0f + gainReductionDB * 0.5f;
             
-            float envelope = proc.envelopeFollower.processSample(detectionSignal[ch]);
-            float envelopeDb = linearToDb(envelope + 1e-10f);
+            float targetGR = 0.0f;
+            float x = envelopeDb;
+            float T = currentParams.threshold;
+            float R = currentParams.ratio;
+            float halfW = kneeWidth / 2.0f;
             
-            float kneeWidth = getKneeWidth(currentParams.kneeMode, proc.gainReduction);
-            float targetGR = compressor.computeGainReduction(
-                envelopeDb, currentParams.threshold, currentParams.ratio, kneeWidth);
+            if (kneeWidth > 0.0f)
+            {
+                if (x <= T - halfW)
+                    targetGR = 0.0f;
+                else if (x >= T + halfW)
+                    targetGR = (x - T) * (1.0f - 1.0f / R);
+                else
+                {
+                    float offset = x - (T - halfW);
+                    float slope = (1.0f - 1.0f / R) / kneeWidth;
+                    targetGR = slope * offset * offset / (2.0f * kneeWidth);
+                }
+            }
+            else
+            {
+                if (x > T)
+                    targetGR = (x - T) * (1.0f - 1.0f / R);
+            }
             
+            // Smooth GR
             float grCoef = std::exp(-1.0f / (effectiveRelease * 0.001f * currentSampleRate * 0.05f));
-            proc.gainReduction = proc.gainReduction * grCoef + targetGR * (1.0f - grCoef);
+            gainReductionDB = gainReductionDB * grCoef + targetGR * (1.0f - grCoef);
             
-            float grLinear = dBToLinear(-proc.gainReduction);
+            // Apply GR
+            float grLinear = dBToLinear(-gainReductionDB);
             float wetSample = inputSample * grLinear;
             
-            if (currentParams.character == 0)
-                proc.warmCharacter.processSample(wetSample, wetSample, proc.gainReduction);
-            
+            // Apply makeup gain
             wetSample *= dBToLinear(currentParams.gain);
             
+            // Wet/dry mix
             float mixFactor = currentParams.mix / 100.0f;
             float outputSample = drySample * (1.0f - mixFactor) + wetSample * mixFactor;
             
+            // Apply trim
             outputSample *= dBToLinear(currentParams.trim);
             
-            outputSample = vclimiter.processSample(outputSample);
+            // Limiter
+            float absOutput = std::abs(outputSample);
+            if (absOutput > 1.0f)
+            {
+                outputSample = outputSample >= 0.0f ? 1.0f : -1.0f;
+                limiterYellow = true;
+                limiterRed = true;
+            }
+            else
+            {
+                limiterYellow = absOutput > 0.7f;
+                limiterRed = false;
+            }
             
             buffer.setSample(ch, sample, outputSample);
             
+            // Get output levels
             float outputLevel = std::abs(outputSample);
             if (ch == 0) outputLevelL = jmax(outputLevelL * 0.95f, outputLevel);
             else outputLevelR = jmax(outputLevelR * 0.95f, outputLevel);
         }
-        
-        gainReductionDB = channels[0].gainReduction;
     }
     
+    // Decay levels
     inputLevelL *= 0.995f;
     inputLevelR *= 0.995f;
     outputLevelL *= 0.995f;
