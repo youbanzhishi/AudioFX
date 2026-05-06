@@ -31,7 +31,7 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install ninja
 
-      # Linux - 只装核心依赖（webkit/gtk/curl 已在代码中禁用）
+      # Linux
       - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
         run: |
@@ -50,8 +50,6 @@ jobs:
             libdbus-1-dev \
             pkg-config
 
-      # Windows runner 已预装 CMake + VS + Ninja
-
       # 缓存 JUCE
       - name: Cache JUCE
         id: cache-juce
@@ -64,12 +62,22 @@ jobs:
         if: steps.cache-juce.outputs.cache-hit != 'true'
         run: git clone --depth 1 --branch 8.0.0 https://github.com/juce-framework/JUCE.git
 
+      # 诊断：Mac 上检查 JUCE 路径
+      - name: Debug JUCE path
+        run: |
+          echo "=== PWD ==="
+          pwd
+          echo "=== JUCE exists? ==="
+          ls -la JUCE/ | head -5
+          echo "=== JUCE CMakeLists.txt? ==="
+          head -3 JUCE/CMakeLists.txt
+
       # 构建 VC-EQ
       - name: Configure VC-EQ
         run: |
           mkdir -p VC-EQ/build
           cd VC-EQ/build
-          cmake .. -G "${{ matrix.cmake_generator }}" -DJUCE_PATH=../../JUCE -DCMAKE_BUILD_TYPE=Release
+          cmake .. -G "${{ matrix.cmake_generator }}" -DJUCE_PATH=../../JUCE -DCMAKE_BUILD_TYPE=Release 2>&1 || { echo "=== CMAKE FAILED ==="; cat CMakeFiles/CMakeError.log 2>/dev/null || true; exit 1; }
 
       - name: Build VC-EQ
         run: |
