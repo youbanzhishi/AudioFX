@@ -14,11 +14,11 @@ jobs:
       matrix:
         include:
           - os: macos-latest
-            cmake_generator: "Xcode"
+            cmake_generator: "Ninja"
           - os: windows-latest
             cmake_generator: "Visual Studio 17 2022"
           - os: ubuntu-latest
-            cmake_generator: "Unix Makefiles"
+            cmake_generator: "Ninja"
 
     runs-on: ${{ matrix.os }}
 
@@ -29,16 +29,14 @@ jobs:
       # macOS
       - name: Install dependencies (macOS)
         if: runner.os == 'macOS'
-        run: |
-          brew install cmake ninja
+        run: brew install ninja
 
-      # Linux - 只装核心依赖，不装webkit/gtk/curl（代码中已禁用）
+      # Linux - 只装核心依赖（webkit/gtk/curl 已在代码中禁用）
       - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            cmake \
             ninja-build \
             libasound2-dev \
             libx11-dev \
@@ -52,8 +50,9 @@ jobs:
             libdbus-1-dev \
             pkg-config
 
-      # Windows runner 已预装 CMake + VS
+      # Windows runner 已预装 CMake + VS + Ninja
 
+      # 缓存 JUCE
       - name: Cache JUCE
         id: cache-juce
         uses: actions/cache@v4
@@ -63,41 +62,31 @@ jobs:
 
       - name: Clone JUCE
         if: steps.cache-juce.outputs.cache-hit != 'true'
-        run: |
-          git clone --depth 1 --branch 8.0.0 https://github.com/juce-framework/JUCE.git
+        run: git clone --depth 1 --branch 8.0.0 https://github.com/juce-framework/JUCE.git
 
-      # JUCE_PATH 是 CACHE 变量，-D 参数直接覆盖，无需 sed 修改源文件
-
+      # 构建 VC-EQ（JUCE_PATH 通过 -D 覆盖 CACHE 变量，无需 sed）
       - name: Configure VC-EQ
         run: |
-          mkdir -p VC-EQ/build
-          cd VC-EQ/build
-          cmake .. -G "${{ matrix.cmake_generator }}" -DJUCE_PATH=../../JUCE -DCMAKE_BUILD_TYPE=Release
+          cmake -B VC-EQ/build -S VC-EQ -G "${{ matrix.cmake_generator }}" -DJUCE_PATH=../../JUCE -DCMAKE_BUILD_TYPE=Release
 
       - name: Build VC-EQ
-        run: |
-          cd VC-EQ/build
-          cmake --build . --config Release
+        run: cmake --build VC-EQ/build --config Release
 
+      # 构建 VC-Comp
       - name: Configure VC-Comp
         run: |
-          mkdir -p VC-Comp/build
-          cd VC-Comp/build
-          cmake .. -G "${{ matrix.cmake_generator }}" -DJUCE_PATH=../../JUCE -DCMAKE_BUILD_TYPE=Release
+          cmake -B VC-Comp/build -S VC-Comp -G "${{ matrix.cmake_generator }}" -DJUCE_PATH=../../JUCE -DCMAKE_BUILD_TYPE=Release
 
       - name: Build VC-Comp
-        run: |
-          cd VC-Comp/build
-          cmake --build . --config Release
+        run: cmake --build VC-Comp/build --config Release
 
+      # 上传构建产物
       - name: Upload VC-EQ Artifact
         uses: actions/upload-artifact@v4
         with:
           name: VC-EQ-${{ matrix.os }}
           path: |
             VC-EQ/build/VC-EQ_artefacts/
-            VC-EQ/build/**/*.vst3
-            VC-EQ/build/**/*.component
           retention-days: 30
 
       - name: Upload VC-Comp Artifact
@@ -106,6 +95,4 @@ jobs:
           name: VC-Comp-${{ matrix.os }}
           path: |
             VC-Comp/build/VC-Comp_artefacts/
-            VC-Comp/build/**/*.vst3
-            VC-Comp/build/**/*.component
           retention-days: 30
