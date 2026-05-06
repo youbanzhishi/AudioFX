@@ -38,6 +38,8 @@ jobs:
       should_build: ${{ steps.set.outputs.should_build }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
 
       - name: Detect changed plugins
         id: set
@@ -53,16 +55,20 @@ jobs:
             else
               plugins=$(echo "$input" | tr ',' ' ' | xargs)
             fi
+            echo "📋 Manual trigger: building $plugins"
           elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
             plugins=$(ls -d VC-*/ 2>/dev/null | sed 's/\/$//' | tr '\n' ' ' | xargs)
+            echo "📋 PR trigger: building all"
           else
-            # Push模式：检测变化的VC-*目录
-            changed_files=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || git diff --name-only --cached 2>/dev/null || echo "")
+            # Push模式：检测变化的目录
+            changed_files=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "")
             
-            # 如果workflow文件本身变了，构建全部
-            if echo "$changed_files" | grep -q ".github/workflows/build.yml"; then
+            # 如果workflow文件变了，构建全部插件
+            if echo "$changed_files" | grep -q ".github/workflows/"; then
               plugins=$(ls -d VC-*/ 2>/dev/null | sed 's/\/$//' | tr '\n' ' ' | xargs)
+              echo "📋 Workflow changed: building all"
             else
+              # 检测哪些VC-*目录有变化
               for dir in VC-*/; do
                 plugin="${dir%/}"
                 if echo "$changed_files" | grep -q "^${plugin}/"; then
@@ -70,6 +76,7 @@ jobs:
                 fi
               done
               plugins=$(echo $plugins | xargs)
+              echo "📋 Changed plugins: ${plugins:-none}"
             fi
           fi
 
@@ -82,7 +89,7 @@ jobs:
             # 生成矩阵JSON: {"plugin":["VC-EQ","VC-Comp"]}
             json_arr=$(echo $plugins | tr ' ' '\n' | sort -u | python3 -c "import sys,json; print(json.dumps({'plugin':[l.strip() for l in sys.stdin if l.strip()]}))")
             echo "matrix=$json_arr" >> $GITHUB_OUTPUT
-            echo "📋 Building: $plugins"
+            echo "📋 Matrix: $json_arr"
           fi
 
   # ──────────────────────────────────────
