@@ -184,8 +184,8 @@ bool VCCompAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) co
     if (layouts.getMainOutputChannelSet() != AudioChannelSet::stereo())
         return false;
     
-    // Sidechain can be stereo or empty
-    auto& scSet = layouts.getInputChannelSet(1);
+    // Sidechain can be stereo or empty (input bus index 1)
+    auto& scSet = layouts.inputBuses[1];
     if (scSet != AudioChannelSet::stereo() && !scSet.isDisabled())
         return false;
     
