@@ -32,11 +32,13 @@ jobs:
       # macOS
       - name: Install dependencies (macOS)
         if: runner.os == 'macOS'
+        shell: bash
         run: brew install ninja
 
       # Linux
       - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
+        shell: bash
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -53,49 +55,55 @@ jobs:
             libdbus-1-dev \
             pkg-config
 
-      # 缓存 JUCE
+      # 缓存 JUCE（升级到8.0.12修复macOS Sequoia兼容性）
       - name: Cache JUCE
         id: cache-juce
         uses: actions/cache@v4
         with:
           path: JUCE
-          key: juce-${{ runner.os }}-v8.0.0
+          key: juce-${{ runner.os }}-v8.0.12
 
       - name: Clone JUCE
         if: steps.cache-juce.outputs.cache-hit != 'true'
-        run: git clone --depth 1 --branch 8.0.0 https://github.com/juce-framework/JUCE.git
+        shell: bash
+        run: git clone --depth 1 --branch 8.0.12 https://github.com/juce-framework/JUCE.git
 
       # 诊断
       - name: Debug environment
+        shell: bash
         run: |
           echo "=== PWD ===" && pwd
           echo "=== JUCE ===" && ls JUCE/CMakeLists.txt
           echo "=== CMake ===" && cmake --version
-          echo "=== Compiler ===" 
+          echo "=== Compiler ==="
           which cc 2>/dev/null && cc --version 2>/dev/null | head -1 || echo "no cc"
           which clang 2>/dev/null && clang --version 2>/dev/null | head -1 || echo "no clang"
           which g++ 2>/dev/null && g++ --version 2>/dev/null | head -1 || echo "no g++"
 
       # 构建 VC-EQ
       - name: Configure VC-EQ
+        shell: bash
         run: |
           mkdir -p VC-EQ/build
           cd VC-EQ/build
           cmake .. -G "${{ matrix.cmake_generator }}" ${{ matrix.extra_cmake_args }} -DJUCE_PATH=../../JUCE -DCMAKE_BUILD_TYPE=Release
 
       - name: Build VC-EQ
+        shell: bash
         run: |
           cd VC-EQ/build
           cmake --build . --config Release
 
       # 构建 VC-Comp
       - name: Configure VC-Comp
+        shell: bash
         run: |
           mkdir -p VC-Comp/build
           cd VC-Comp/build
           cmake .. -G "${{ matrix.cmake_generator }}" ${{ matrix.extra_cmake_args }} -DJUCE_PATH=../../JUCE -DCMAKE_BUILD_TYPE=Release
 
       - name: Build VC-Comp
+        shell: bash
         run: |
           cd VC-Comp/build
           cmake --build . --config Release
@@ -103,6 +111,7 @@ jobs:
       # 列出构建产物（诊断用）
       - name: List build artefacts
         if: always()
+        shell: bash
         run: |
           echo "=== VC-EQ artefacts ==="
           find VC-EQ/build -name "*.vst3" -o -name "*.component" -o -name "*.dll" 2>/dev/null || echo "none found"
