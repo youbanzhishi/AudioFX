@@ -191,13 +191,12 @@ int main(int c, char** v) {
     
     // Write output
     juce::WavAudioFormat wavFmt;
-    juce::StringArray opts;
     std::unique_ptr<juce::AudioFormatWriter> writer(wavFmt.createWriterFor(
         new juce::FileOutputStream(juce::File(outFile)),
         reader->sampleRate,
         static_cast<unsigned int>(buffer.getNumChannels()),
         32,     // bit depth
-        opts,   // metadata
+        {},
         0));    // quality (for WAV this is ignored)
     
     if (writer) {
