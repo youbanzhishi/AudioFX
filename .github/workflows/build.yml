@@ -51,13 +51,13 @@ jobs:
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             input="${{ github.event.inputs.plugins }}"
             if [[ "$input" == "all" ]]; then
-              plugins=$(ls -d VC-*/ 2>/dev/null | sed 's/\/$//' | tr '\n' ' ' | xargs)
+              plugins=$(ls -d VC-*/ 2>/dev/null | grep -v "VC-Plugin-Template" | sed 's/\/$//' | tr '\n' ' ' | xargs)
             else
               plugins=$(echo "$input" | tr ',' ' ' | xargs)
             fi
             echo "📋 Manual trigger: building $plugins"
           elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            plugins=$(ls -d VC-*/ 2>/dev/null | sed 's/\/$//' | tr '\n' ' ' | xargs)
+            plugins=$(ls -d VC-*/ 2>/dev/null | grep -v "VC-Plugin-Template" | sed 's/\/$//' | tr '\n' ' ' | xargs)
             echo "📋 PR trigger: building all"
           else
             # Push模式：检测变化的目录
@@ -65,11 +65,12 @@ jobs:
             
             # 如果workflow文件变了，构建全部插件
             if echo "$changed_files" | grep -q ".github/workflows/"; then
-              plugins=$(ls -d VC-*/ 2>/dev/null | sed 's/\/$//' | tr '\n' ' ' | xargs)
+              plugins=$(ls -d VC-*/ 2>/dev/null | grep -v "VC-Plugin-Template" | sed 's/\/$//' | tr '\n' ' ' | xargs)
               echo "📋 Workflow changed: building all"
             else
               # 检测哪些VC-*目录有变化
               for dir in VC-*/; do
+                [[ "$dir" == "VC-Plugin-Template/" ]] && continue
                 plugin="${dir%/}"
                 if echo "$changed_files" | grep -q "^${plugin}/"; then
                   plugins="$plugins $plugin"
