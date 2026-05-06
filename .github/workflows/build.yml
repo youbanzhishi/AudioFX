@@ -64,21 +64,29 @@ jobs:
         if: steps.cache-juce.outputs.cache-hit != 'true'
         run: git clone --depth 1 --branch 8.0.0 https://github.com/juce-framework/JUCE.git
 
-      # 构建 VC-EQ（JUCE_PATH 通过 -D 覆盖 CACHE 变量，无需 sed）
+      # 构建 VC-EQ
       - name: Configure VC-EQ
         run: |
-          cmake -B VC-EQ/build -S VC-EQ -G "${{ matrix.cmake_generator }}" -DJUCE_PATH=../../JUCE -DCMAKE_BUILD_TYPE=Release
+          mkdir -p VC-EQ/build
+          cd VC-EQ/build
+          cmake .. -G "${{ matrix.cmake_generator }}" -DJUCE_PATH=../../JUCE -DCMAKE_BUILD_TYPE=Release
 
       - name: Build VC-EQ
-        run: cmake --build VC-EQ/build --config Release
+        run: |
+          cd VC-EQ/build
+          cmake --build . --config Release
 
       # 构建 VC-Comp
       - name: Configure VC-Comp
         run: |
-          cmake -B VC-Comp/build -S VC-Comp -G "${{ matrix.cmake_generator }}" -DJUCE_PATH=../../JUCE -DCMAKE_BUILD_TYPE=Release
+          mkdir -p VC-Comp/build
+          cd VC-Comp/build
+          cmake .. -G "${{ matrix.cmake_generator }}" -DJUCE_PATH=../../JUCE -DCMAKE_BUILD_TYPE=Release
 
       - name: Build VC-Comp
-        run: cmake --build VC-Comp/build --config Release
+        run: |
+          cd VC-Comp/build
+          cmake --build . --config Release
 
       # 上传构建产物
       - name: Upload VC-EQ Artifact
