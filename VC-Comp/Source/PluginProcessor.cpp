@@ -15,12 +15,11 @@ static inline float linearToDb(float linear) {
 // Constructor
 //==============================================================================
 VCCompAudioProcessor::VCCompAudioProcessor()
+    : AudioProcessor(BusesProperties()
+        .withInput("Input", AudioChannelSet::stereo())
+        .withOutput("Output", AudioChannelSet::stereo())
+        .withInput("Sidechain", AudioChannelSet::stereo()))
 {
-    // Sidechain bus configuration
-    AudioProcessor::BusesProperties props;
-    props = props.withInput("Input", AudioChannelSet::stereo())
-             .withOutput("Output", AudioChannelSet::stereo())
-             .withInput("Sidechain", AudioChannelSet::stereo());
     
     apvts.addParameterListener(ParameterIDs::threshold, this);
     apvts.addParameterListener(ParameterIDs::ratio, this);
