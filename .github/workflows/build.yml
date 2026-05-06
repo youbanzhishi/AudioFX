@@ -15,10 +15,13 @@ jobs:
         include:
           - os: macos-latest
             cmake_generator: "Ninja"
+            extra_cmake_args: ""
           - os: windows-latest
             cmake_generator: "Visual Studio 17 2022"
+            extra_cmake_args: ""
           - os: ubuntu-latest
             cmake_generator: "Ninja"
+            extra_cmake_args: ""
 
     runs-on: ${{ matrix.os }}
 
@@ -62,22 +65,23 @@ jobs:
         if: steps.cache-juce.outputs.cache-hit != 'true'
         run: git clone --depth 1 --branch 8.0.0 https://github.com/juce-framework/JUCE.git
 
-      # 诊断：Mac 上检查 JUCE 路径
-      - name: Debug JUCE path
+      # 诊断
+      - name: Debug environment
         run: |
-          echo "=== PWD ==="
-          pwd
-          echo "=== JUCE exists? ==="
-          ls -la JUCE/ | head -5
-          echo "=== JUCE CMakeLists.txt? ==="
-          head -3 JUCE/CMakeLists.txt
+          echo "=== PWD ===" && pwd
+          echo "=== JUCE ===" && ls JUCE/CMakeLists.txt
+          echo "=== CMake ===" && cmake --version
+          echo "=== Compiler ===" 
+          which cc 2>/dev/null && cc --version 2>/dev/null | head -1 || echo "no cc"
+          which clang 2>/dev/null && clang --version 2>/dev/null | head -1 || echo "no clang"
+          which g++ 2>/dev/null && g++ --version 2>/dev/null | head -1 || echo "no g++"
 
       # 构建 VC-EQ
       - name: Configure VC-EQ
         run: |
           mkdir -p VC-EQ/build
           cd VC-EQ/build
-          cmake .. -G "${{ matrix.cmake_generator }}" -DJUCE_PATH=../../JUCE -DCMAKE_BUILD_TYPE=Release 2>&1 || { echo "=== CMAKE FAILED ==="; cat CMakeFiles/CMakeError.log 2>/dev/null || true; exit 1; }
+          cmake .. -G "${{ matrix.cmake_generator }}" ${{ matrix.extra_cmake_args }} -DJUCE_PATH=../../JUCE -DCMAKE_BUILD_TYPE=Release
 
       - name: Build VC-EQ
         run: |
@@ -89,26 +93,41 @@ jobs:
         run: |
           mkdir -p VC-Comp/build
           cd VC-Comp/build
-          cmake .. -G "${{ matrix.cmake_generator }}" -DJUCE_PATH=../../JUCE -DCMAKE_BUILD_TYPE=Release
+          cmake .. -G "${{ matrix.cmake_generator }}" ${{ matrix.extra_cmake_args }} -DJUCE_PATH=../../JUCE -DCMAKE_BUILD_TYPE=Release
 
       - name: Build VC-Comp
         run: |
           cd VC-Comp/build
           cmake --build . --config Release
 
+      # 列出构建产物（诊断用）
+      - name: List build artefacts
+        if: always()
+        run: |
+          echo "=== VC-EQ artefacts ==="
+          find VC-EQ/build -name "*.vst3" -o -name "*.component" -o -name "*.dll" 2>/dev/null || echo "none found"
+          ls -la VC-EQ/build/VC-EQ_artefacts/ 2>/dev/null || echo "no artefacts dir"
+          echo "=== VC-Comp artefacts ==="
+          find VC-Comp/build -name "*.vst3" -o -name "*.component" -o -name "*.dll" 2>/dev/null || echo "none found"
+          ls -la VC-Comp/build/VC-Comp_artefacts/ 2>/dev/null || echo "no artefacts dir"
+
       # 上传构建产物
       - name: Upload VC-EQ Artifact
         uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: VC-EQ-${{ matrix.os }}
           path: |
             VC-EQ/build/VC-EQ_artefacts/
+            VC-EQ/build/**/VC-EQ.vst3/
           retention-days: 30
 
       - name: Upload VC-Comp Artifact
         uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: VC-Comp-${{ matrix.os }}
           path: |
             VC-Comp/build/VC-Comp_artefacts/
+            VC-Comp/build/**/VC-Comp.vst3/
           retention-days: 30
