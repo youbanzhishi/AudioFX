@@ -1,0 +1,129 @@
+// VC-EQ CLI - 命令行均衡器工具
+#include <iostream>
+#include <string>
+#include <vector>
+#include <map>
+#include <cmath>
+#include <juce_core/juce_core.h>
+#include <juce_audio_basics/juce_audio_basics.h>
+#include <juce_audio_formats/juce_audio_formats.h>
+#include <juce_dsp/juce_dsp.h>
+#include "../DSP/VCEQDSP.h"
+
+struct Preset { const char* name; VCEQDSP::BandParams bands[VCEQDSP::kNumBands]; };
+
+static const Preset presets[] = {
+    {"vocal-boost", {{ true, VCEQDSP::FilterType::LowShelf, 80.0f, 0.707f, 1.0f }, { true, VCEQDSP::FilterType::Parametric, 300.0f, 1.0f, 0.5f }, { true, VCEQDSP::FilterType::Parametric, 1000.0f, 1.0f, -1.0f }, { true, VCEQDSP::FilterType::Parametric, 3000.0f, 1.2f, 2.0f }, { true, VCEQDSP::FilterType::HighShelf, 8000.0f, 0.707f, 2.5f }}},
+    {"vocal-cut", {{ true, VCEQDSP::FilterType::LowShelf, 80.0f, 0.707f, 0.5f }, { true, VCEQDSP::FilterType::Parametric, 300.0f, 1.0f, 0.5f }, { true, VCEQDSP::FilterType::Parametric, 1000.0f, 1.0f, 0.0f }, { true, VCEQDSP::FilterType::Parametric, 3000.0f, 1.5f, -2.0f }, { true, VCEQDSP::FilterType::HighShelf, 8000.0f, 0.707f, -3.0f }}},
+    {"warmth", {{ true, VCEQDSP::FilterType::LowShelf, 80.0f, 0.707f, 3.0f }, { true, VCEQDSP::FilterType::Parametric, 300.0f, 1.0f, 1.5f }, { true, VCEQDSP::FilterType::Parametric, 1000.0f, 1.0f, 0.0f }, { true, VCEQDSP::FilterType::Parametric, 3000.0f, 1.0f, -1.0f }, { true, VCEQDSP::FilterType::HighShelf, 8000.0f, 0.707f, -1.5f }}},
+    {"brightness", {{ true, VCEQDSP::FilterType::LowShelf, 80.0f, 0.707f, -1.0f }, { true, VCEQDSP::FilterType::Parametric, 300.0f, 1.0f, -0.5f }, { true, VCEQDSP::FilterType::Parametric, 1000.0f, 1.0f, 0.0f }, { true, VCEQDSP::FilterType::Parametric, 3000.0f, 1.2f, 1.5f }, { true, VCEQDSP::FilterType::HighShelf, 8000.0f, 0.707f, 3.0f }}},
+    {"flat", {{ true, VCEQDSP::FilterType::LowShelf, 80.0f, 0.707f, 0.0f }, { true, VCEQDSP::FilterType::Parametric, 300.0f, 1.0f, 0.0f }, { true, VCEQDSP::FilterType::Parametric, 1000.0f, 1.0f, 0.0f }, { true, VCEQDSP::FilterType::Parametric, 3000.0f, 1.0f, 0.0f }, { true, VCEQDSP::FilterType::HighShelf, 8000.0f, 0.707f, 0.0f }}}
+};
+
+void printHelp(const char* p) {
+    std::cout << "VC-EQ CLI - 5段参数均衡器\n\n";
+    std::cout << "用法: " << p << " <input.wav> <output.wav> [选项]\n\n";
+    std::cout << "选项:\n";
+    std::cout << "  --help, -h 显示帮助\n";
+    std::cout << "  --preset <name> 预设 (vocal-boost, vocal-cut, warmth, brightness, flat)\n\n";
+    std::cout << "频段参数 (band0-band4):\n";
+    std::cout << "  --band<N>-freq <Hz> --band<N>-gain <dB> --band<N>-q <value>\n";
+    std::cout << "  --band<N>-type <0|1|2> --band<N>-on <0|1>\n\n";
+    std::cout << "示例:\n";
+    std::cout << "  " << p << " in.wav out.wav --preset vocal-boost\n";
+    std::cout << "  " << p << " in.wav out.wav --band3-freq 3000 --band3-gain 2.5\n";
+}
+
+std::map<std::string, std::string> parseArgs(int c, char** v) {
+    std::map<std::string, std::string> a;
+    for (int i = 1; i < c; ++i) {
+        std::string arg = v[i];
+        if (arg == "--help" || arg == "-h") a["--help"] = "";
+        else if (arg.substr(0,2) == "--") {
+            std::string k = arg, val;
+            if (i+1 < c && v[i+1][0] != '-') val = v[++i];
+            a[k] = val;
+        }
+    }
+    return a;
+}
+
+bool buildBandParams(const std::map<std::string, std::string>& a, int idx, VCEQDSP::BandParams& p) {
+    std::string pre = "--band" + std::to_string(idx);
+    bool has = false;
+    for (const auto& x : a) if (x.first.find(pre) == 0) { has = true; break; }
+    if (!has) return false;
+    p = VCEQDSP::BandParams();
+    p.frequency = VCEQDSP::kDefaultFrequencies[idx];
+    p.q = VCEQDSP::kDefaultQ[idx];
+    p.gainDB = VCEQDSP::kDefaultGains[idx];
+    p.enabled = true;
+    if (a.count(pre+"-freq")) p.frequency = std::stof(a.at(pre+"-freq"));
+    if (a.count(pre+"-gain")) p.gainDB = std::stof(a.at(pre+"-gain"));
+    if (a.count(pre+"-q")) p.q = std::stof(a.at(pre+"-q"));
+    if (a.count(pre+"-type")) p.type = static_cast<VCEQDSP::FilterType>(std::stoi(a.at(pre+"-type")));
+    if (a.count(pre+"-on")) p.enabled = (a.at(pre+"-on") == "1");
+    return true;
+}
+
+bool loadPreset(const std::string& n, VCEQDSP::BandParams b[VCEQDSP::kNumBands]) {
+    for (const auto& p : presets) if (n == p.name) { for (int i=0;i<VCEQDSP::kNumBands;++i) b[i]=p.bands[i]; return true; }
+    return false;
+}
+
+int main(int c, char** v) {
+    if (c < 2) { printHelp(v[0]); return 1; }
+    auto a = parseArgs(c, v);
+    if (a.count("--help")) { printHelp(v[0]); return 0; }
+    std::vector<std::string> files;
+    for (int i=1;i<c;++i) if (v[i][0] != '-') files.push_back(v[i]);
+    if (files.size() < 2) { std::cerr << "需要输入和输出文件\n"; printHelp(v[0]); return 1; }
+    std::string in = files[0], out = files[1];
+    std::cout << "VC-EQ CLI\n输入: " << in << "\n输出: " << out << "\n";
+    
+    juce::AudioFormatManager fm;
+    fm.registerBasicFormats();
+    std::unique_ptr<juce::AudioFormatReader> r(fm.createReaderFor(juce::File(in)));
+    if (!r) { std::cerr << "无法读取文件: " << in << "\n"; return 1; }
+    std::cout << "采样率: " << r->sampleRate << "Hz, 声道: " << r->numChannels << "\n";
+    
+    juce::AudioBuffer<float> buf(static_cast<int>(r->numChannels), static_cast<int>(r->lengthInSamples));
+    r->read(buf.getArrayOfWritePointers(), buf.getNumChannels(), 0, buf.getNumSamples());
+    
+    VCEQDSP dsp;
+    dsp.prepare(r->sampleRate, 4096);
+    VCEQDSP::BandParams bands[VCEQDSP::kNumBands];
+    
+    if (a.count("--preset")) {
+        std::string pname = a["--preset"]; std::cout << "预设: " << pname << "\n";
+        if (!loadPreset(pname, bands)) { std::cerr << "未知预设\n"; return 1; }
+        dsp.setAllBands(bands);
+    }
+    
+    for (int i=0;i<VCEQDSP::kNumBands;++i) {
+        VCEQDSP::BandParams bp;
+        if (buildBandParams(a, i, bp)) {
+            dsp.setBand(i, bp);
+            std::cout << "Band " << i << ": freq=" << bp.frequency << "Hz, gain=" << bp.gainDB << "dB, Q=" << bp.q << "\n";
+        }
+    }
+    
+    std::cout << "处理中...\n";
+    if (buf.getNumChannels() >= 2) {
+        dsp.process(buf.getWritePointer(0), buf.getWritePointer(1), buf.getNumSamples());
+    } else if (buf.getNumChannels() == 1) {
+        auto* l = buf.getWritePointer(0);
+        dsp.process(l, l, buf.getNumSamples());
+    }
+    
+    // 写入WAV
+    juce::WavAudioFormat wavFmt;
+    std::unique_ptr<juce::AudioFormatWriter> writer(wavFmt.createWriterFor(
+        new juce::FileOutputStream(juce::File(out)), r->sampleRate, 
+        static_cast<unsigned int>(buf.getNumChannels()), 32, {}, 0));
+    if (writer) writer->writeFromAudioSampleBuffer(buf, 0, buf.getNumSamples());
+    else { std::cerr << "无法写入文件: " << out << "\n"; return 1; }
+    
+    std::cout << "完成!\n";
+    return 0;
+}
