@@ -1,0 +1,145 @@
+name: Build VST3 Plugins
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            plugin_format: "VST3,AU"
+            cmake_generator: "Xcode"
+          - os: windows-latest
+            plugin_format: "VST3"
+            cmake_generator: "Visual Studio 17 2022"
+          - os: ubuntu-latest
+            plugin_format: "VST3"
+            cmake_generator: "Unix Makefiles"
+
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # ===== macOS 特定配置 =====
+      - name: Install Xcode Command Line Tools (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          which cmake || brew install cmake
+          which ninja || brew install ninja
+
+      # ===== Windows 特定配置 =====
+      - name: Install CMake (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          choco install cmake -y
+          refreshenv
+
+      # ===== Linux 特定配置 =====
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake \
+            ninja-build \
+            libasound2-dev \
+            libx11-dev \
+            libxrandr-dev \
+            libxinerama-dev \
+            libxcursor-dev \
+            libxcomposite-dev \
+            libfreetype6-dev \
+            libfontconfig1-dev \
+            libgl1-mesa-dev \
+            libcurl4-openssl-dev \
+            libgtk-3-dev \
+            libwebkit2gtk-4.0-dev \
+            libdbus-1-dev \
+            pkg-config
+
+      # ===== 缓存 JUCE =====
+      - name: Cache JUCE
+        id: cache-juce
+        uses: actions/cache@v4
+        with:
+          path: JUCE
+          key: juce-${{ runner.os }}-v8.0.0
+
+      # ===== 克隆 JUCE =====
+      - name: Clone JUCE
+        if: steps.cache-juce.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 --branch 8.0.0 https://github.com/juce-framework/JUCE.git
+
+      # ===== 修改 CMakeLists.txt 中的 JUCE 路径 =====
+      - name: Update JUCE path (macOS/Linux)
+        if: runner.os != 'Windows'
+        run: |
+          sed -i 's|set (JUCE_PATH "/opt/JUCE")|set (JUCE_PATH "./JUCE")|g' VC-EQ/CMakeLists.txt
+          sed -i 's|set (JUCE_PATH "/opt/JUCE")|set (JUCE_PATH "./JUCE")|g' VC-Comp/CMakeLists.txt
+
+      - name: Update JUCE path (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          powershell -Command "(Get-Content 'VC-EQ\CMakeLists.txt') -replace 'set \(JUCE_PATH \"/opt/JUCE\"\)', 'set (JUCE_PATH \"./JUCE\")' | Set-Content 'VC-EQ\CMakeLists.txt'"
+          powershell -Command "(Get-Content 'VC-Comp\CMakeLists.txt') -replace 'set \(JUCE_PATH \"/opt/JUCE\"\)', 'set (JUCE_PATH \"./JUCE\")' | Set-Content 'VC-Comp\CMakeLists.txt'"
+
+      # ===== 构建 VC-EQ =====
+      - name: Configure VC-EQ
+        run: |
+          mkdir -p VC-EQ/build
+          cd VC-EQ/build
+          cmake .. -G "${{ matrix.cmake_generator }}" \
+            -DJUCE_PATH=../../JUCE \
+            -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build VC-EQ
+        run: |
+          cd VC-EQ/build
+          cmake --build . --config Release
+
+      # ===== 构建 VC-Comp =====
+      - name: Configure VC-Comp
+        run: |
+          mkdir -p VC-Comp/build
+          cd VC-Comp/build
+          cmake .. -G "${{ matrix.cmake_generator }}" \
+            -DJUCE_PATH=../../JUCE \
+            -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build VC-Comp
+        run: |
+          cd VC-Comp/build
+          cmake --build . --config Release
+
+      # ===== 上传构建产物 =====
+      - name: Upload VC-EQ Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VC-EQ-${{ matrix.os }}
+          path: |
+            VC-EQ/build/VC-EQ_artefacts/Release/**
+            VC-EQ/build/**/*.vst3
+            VC-EQ/build/**/*.component
+          retention-days: 30
+
+      - name: Upload VC-Comp Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VC-Comp-${{ matrix.os }}
+          path: |
+            VC-Comp/build/VC-Comp_artefacts/Release/**
+            VC-Comp/build/**/*.vst3
+            VC-Comp/build/**/*.component
+          retention-days: 30
