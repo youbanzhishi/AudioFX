@@ -3,6 +3,9 @@ name: Build VST3 Plugins
 on:
   push:
     branches: [ main ]
+    paths:
+      - 'VC-*/**'
+      - '.github/workflows/**'
   pull_request:
     branches: [ main ]
   workflow_dispatch:
