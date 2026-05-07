@@ -36,3 +36,7 @@ Libs/
 # Test files
 test_*.wav
 *.wav
+
+# CLI binaries
+VC-Harmonizer-CLI-Standalone
+VC-Harmonizer-CLI
