@@ -208,9 +208,17 @@ jobs:
         run: |
           cd ${{ matrix.plugin }}
           # Detect DSP filename (some plugins have custom names)
+          # Gen1 plugins (16): VC-EQ, VC-Comp, VC-Smooth, VC-Gain, VC-Saturator,
+          #   VC-DeEsser, VC-SurgicalDeEsser, VC-Limiter, VC-Delay, VC-Reverb,
+          #   VC-DynamicEQ, VC-Distortion, VC-Noise, VC-Tune, VC-Gate, VC-Chorus
+          # Custom DSP filenames: VCEQDSP, VCCompDSP, VCSmoothDSP,
+          #   VCDistortionDSP, VCNoiseDSP, VCSurgicalDeEsserDSP
           if [ -f "Source/DSP/VCEQDSP.cpp" ]; then DSP="Source/DSP/VCEQDSP.cpp"
           elif [ -f "Source/DSP/VCCompDSP.cpp" ]; then DSP="Source/DSP/VCCompDSP.cpp"
           elif [ -f "Source/DSP/VCSmoothDSP.cpp" ]; then DSP="Source/DSP/VCSmoothDSP.cpp"
+          elif [ -f "Source/DSP/VCDistortionDSP.cpp" ]; then DSP="Source/DSP/VCDistortionDSP.cpp"
+          elif [ -f "Source/DSP/VCNoiseDSP.cpp" ]; then DSP="Source/DSP/VCNoiseDSP.cpp"
+          elif [ -f "Source/DSP/VCSurgicalDeEsserDSP.cpp" ]; then DSP="Source/DSP/VCSurgicalDeEsserDSP.cpp"
           else DSP="Source/DSP/VCPluginDSP.cpp"; fi
           echo "DSP file: $DSP"
           g++ -std=c++17 -DVC_STANDALONE -O2 \
