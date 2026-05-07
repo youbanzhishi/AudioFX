@@ -563,7 +563,7 @@ void HarmonyVoice::processVoice(const float* input, int numSamples,
     }
 
     float pitchRatio = std::pow(2.0f, intervalSemitones / 12.0f);
-    float gainLinear = VCPluginDSP::dBToLinear(mParams.gainDB);
+    float gainLinear = VCPluginDSP::dBToLinear(mVoiceParams.gainDB);
 
     // Method: Simple resampling for pitch shift
     // Resample input at different rate to shift pitch
@@ -608,8 +608,8 @@ void HarmonyVoice::processVoice(const float* input, int numSamples,
     }
 
     // Apply gain and pan
-    float panL = std::cos((mParams.pan + 1.0f) * 0.25f * VC_PI);
-    float panR = std::sin((mParams.pan + 1.0f) * 0.25f * VC_PI);
+    float panL = std::cos((mVoiceParams.pan + 1.0f) * 0.25f * VC_PI);
+    float panR = std::sin((mVoiceParams.pan + 1.0f) * 0.25f * VC_PI);
 
     for (int i = 0; i < numSamples; i++) {
         float sample = mShiftedBuffer[i] * gainLinear;
@@ -829,7 +829,7 @@ void VCPluginDSP::process(float* left, float* right, int numSamples)
         vp.gainDB = mParams.voiceGain[v];
         vp.pan = mParams.voicePan[v];
         vp.enabled = true;
-        mVoices[v].setParams(vp);  // We need to add setParams... let me handle differently
+        mVoices[v].setVoiceParams(vp);  // We need to add setParams... let me handle differently
 
         // We'll pass interval and formant preserve directly
         int interval = computeEffectiveInterval(mParams.intervals[v]);
@@ -867,7 +867,7 @@ void VCPluginDSP::process(float* left, float* right, int numSamples)
         HarmonyVoice::Params voiceP;
         voiceP.gainDB = mParams.voiceGain[v];
         voiceP.pan = mParams.voicePan[v];
-        mVoices[v].setParams(voiceP);
+        mVoices[v].setVoiceParams(voiceP);
 
         // Process voice: input → pitch shift → formant preserve → pan → accumulate
         mVoices[v].processVoice(leadSignal, numSamples,

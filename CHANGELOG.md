@@ -148,3 +148,25 @@ All Gen 2 P0 upgrades complete: FDN Reverb + Multiband Comp + Stereo + PitchShif
 - VC-NoiseProfile: Spectral subtraction noise reduction (learn profile → denoise)
 - VC-MultiBand CLI presets
 - AudioFX CI: VC-MultiBand + VC-Harmonizer + VC-Tune Gen2 in gen2-verify
+
+## v1.5.0 (WIP) — Gen2 P2 Plugins
+
+### New Plugins
+- **VC-Harmonizer**: Intelligent harmony generator
+  - YIN pitch detection + K-S key detection
+  - 4 harmony voices with configurable intervals
+  - LPC formant preservation (reused from VC-Tune Gen2)
+  - Per-voice gain/pan control
+  - Presets: third-above, fifth-above, choir, low-harmony, octaver
+
+- **VC-NoiseProfile**: Spectral subtraction noise reduction
+  - Learn noise profile from silent segments
+  - Radix-2 FFT (512-point) for spectral analysis
+  - Spectral subtraction with over-subtraction + spectral floor
+  - Noise gate (Gen1 preserved)
+  - Modes: denoise/gate/both/analyze
+
+### Bug Fixes
+- VC-Comp Gen2: envelope sqrt() + setReleaseTime per sample
+- VC-EQ: IIR coefficient stability (6 safety clamps)
+- VC-PitchShift: Phase Vocoder time-stretch + resample fix

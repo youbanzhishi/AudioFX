@@ -166,8 +166,6 @@ private:
 class SimpleResampler
 {
 public:
-    // Resample input to output using linear interpolation
-    // pitchRatio > 1 shifts up, < 1 shifts down
     static void resample(const float* input, int inputLen,
                          float* output, int outputLen, float pitchRatio);
 };
@@ -196,10 +194,13 @@ public:
 
     void reset();
 
+    void setVoiceParams(const Params& p) { mVoiceParams = p; }
+    Params getVoiceParams() const { return mVoiceParams; }
+
 private:
     double mSampleRate = 44100.0;
     int mBlockSize = 512;
-    Params mParams;
+    Params mVoiceParams;
 
     // Buffers for pitch-shifted signal (mono)
     std::vector<float> mShiftedBuffer;
