@@ -81,3 +81,16 @@
 
 ### Bug Fixes
 - VC-PitchShift: inline pitch ratio computation (was referencing undefined function)
+
+## [1.2.0] — 2026-05-07
+
+### Gen 2 P0 Complete
+
+**VC-Comp Multiband** — 4-band multiband compression upgrade
+- LR4 (4th-order Linkwitz-Riley, 24dB/oct) crossover
+- 3 crossover points: 120Hz / 1kHz / 8kHz → 4 frequency bands
+- 4 independent compressors with per-band threshold/ratio/makeup
+- Single-band mode fully backward compatible
+- Gen1 code backed up as .gen1 files
+
+All Gen 2 P0 upgrades complete: FDN Reverb + Multiband Comp + Stereo + PitchShift
