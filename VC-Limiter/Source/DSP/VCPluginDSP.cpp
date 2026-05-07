@@ -42,7 +42,8 @@ void VCPluginDSP::prepare(double sampleRate, int blockSize)
 //==============================================================================
 void VCPluginDSP::process(float* left, float* right, int numSamples)
 {
-    if (!mEnabled)
+    // Bypass: if disabled or params say bypass, pass through unchanged
+    if (!mEnabled || !mParams.enabled)
         return;
 
     // Use internal processing

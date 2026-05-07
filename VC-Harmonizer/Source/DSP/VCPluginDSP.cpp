@@ -878,10 +878,21 @@ void VCPluginDSP::process(float* left, float* right, int numSamples)
     }
 
     // Mix: output = original (dry) + harmony (wet)
-    // The harmony is already panned, so we just add it to the output
+    // Apply normalization factor to prevent clipping from voice stacking
+    // N voices + 1 dry signal = (N+1) sources; normalize by 1/(N+1) then scale to taste
+    int numActiveVoices = std::min(mParams.numVoices, MAX_VOICES);
+    float normFactor = 1.0f / (1.0f + static_cast<float>(numActiveVoices));
+
     for (int i = 0; i < numSamples; i++) {
-        left[i] = left[i] + harmonyL[i];
-        right[i] = right[i] + harmonyR[i];
+        // Normalize: dry + wet scaled so total energy is preserved
+        left[i] = left[i] * normFactor + harmonyL[i] * normFactor;
+        right[i] = right[i] * normFactor + harmonyR[i] * normFactor;
+    }
+
+    // Output hard-clip protection (safety net)
+    for (int i = 0; i < numSamples; i++) {
+        left[i] = std::clamp(left[i], -1.0f, 1.0f);
+        right[i] = std::clamp(right[i], -1.0f, 1.0f);
     }
 }
 

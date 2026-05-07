@@ -206,9 +206,11 @@ int main(int argc, char** argv) {
     }
 
     if (args.count("--bypass")) {
-        params.enabled = (args["--bypass"] == "1");
+        // --bypass 1 means bypass ON → enabled = false (no processing)
+        bool bypassOn = (args["--bypass"] == "1");
+        params.enabled = !bypassOn;
         dsp.setEnabled(params.enabled);
-        std::cout << "Bypass: " << (params.enabled ? "off" : "on") << "\n";
+        std::cout << "Bypass: " << (bypassOn ? "on" : "off") << "\n";
     }
 
     //============================================================================
