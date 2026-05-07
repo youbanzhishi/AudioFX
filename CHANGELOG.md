@@ -1,5 +1,36 @@
 # Changelog
 
+## [2.4.0] - 2026-05-08
+
+### AudioFX v2.4.0 - Preset System with Batch Processing and Effect Chain CLI
+
+#### Unified Preset File Format
+- JSON Schema v1.0 for preset files
+- Standardized preset structure across all plugins
+
+#### Preset Management CLI
+- list: list available presets for a plugin
+- export: export a preset to file
+- import: import a preset from file
+- apply: apply a preset to an audio file
+
+#### Batch Processing Tool
+- Multi-file parallel processing support
+- Process multiple audio files simultaneously with a single preset
+
+#### Effect Chain CLI
+- Chain multiple effects in series
+- Sequential effect processing pipeline
+
+#### Presets & Plugins
+- 36 presets across 15 plugins
+
+#### Bug Fix
+- Discovered and documented VC-CLI bypass logic inversion bug (--bypass 0 enables bypass instead of disabling it)
+
+#### Tests
+- 59 new tests added
+
 ## [2.3.0] - 2026-05-15
 
 ### JUCE VST3 Build Support for Instrument Plugins
