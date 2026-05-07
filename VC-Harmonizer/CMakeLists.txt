@@ -1,23 +1,21 @@
-# VC-Plugin-Template - VST3 Audio Plugin Template
-# Based on JUCE 8 + CMake
-# Supports: JUCE CLI + Standalone CLI + VST3 Plugin
+# VC-Harmonizer - Intelligent Harmony Generator
+# VST3 Audio Plugin based on JUCE 8 + CMake
 
 cmake_minimum_required(VERSION 3.22)
 
 #==============================================================================
-# Plugin Configuration - Replace these placeholders
+# Plugin Configuration
 #==============================================================================
 set(PLUGIN_NAME "VC-Harmonizer")
 set(PLUGIN_CODE "VCHM")
 set(PLUGIN_VERSION "1.0.0")
 set(MANUFACTURER_CODE "VCAU")
 
-# JUCE Path - MUST be set before project()
+# JUCE Path
 set(JUCE_PATH "/opt/JUCE" CACHE PATH "Path to JUCE")
 
 project(${PLUGIN_NAME} VERSION ${PLUGIN_VERSION} LANGUAGES C CXX)
 
-# Import JUCE via add_subdirectory
 add_subdirectory(${JUCE_PATH} JUCE-build)
 
 #==============================================================================
@@ -29,7 +27,6 @@ set(DSP_SOURCES
 
 #==============================================================================
 # Target 1: JUCE CLI
-# Command-line tool using JUCE for WAV I/O
 #==============================================================================
 add_executable(${PLUGIN_NAME}-CLI Source/CLI/main.cpp ${DSP_SOURCES})
 
@@ -57,10 +54,7 @@ set_target_properties(${PLUGIN_NAME}-CLI PROPERTIES
 )
 
 #==============================================================================
-# Target 2: Standalone CLI
-# Zero-dependency command-line tool using dr_wav
-# NOTE: dr_wav include path is ${CMAKE_SOURCE_DIR}/../Libs/dr_wav
-#       because CMAKE_SOURCE_DIR points to the plugin subdirectory
+# Target 2: Standalone CLI (dr_wav, zero dependency)
 #==============================================================================
 add_executable(${PLUGIN_NAME}-CLI-Standalone Source/CLI_Standalone/main.cpp ${DSP_SOURCES})
 
@@ -72,7 +66,6 @@ target_compile_definitions(${PLUGIN_NAME}-CLI-Standalone PRIVATE
     VC_STANDALONE
 )
 
-# No external dependencies - pure C++ with dr_wav headers
 target_link_libraries(${PLUGIN_NAME}-CLI-Standalone PRIVATE)
 
 set_target_properties(${PLUGIN_NAME}-CLI-Standalone PROPERTIES
