@@ -1,5 +1,33 @@
 # Changelog
 
+## [2.1.0] - 2026-05-08
+
+### 🎹 New: Virtual Instrument Plugins
+
+#### VC-Synth — Subtractive Synthesizer
+- 16-voice polyphonic synth with polyblep anti-aliasing
+- 5 waveforms: sine/saw/square/triangle/noise
+- Unison (1-7 voices) with detune
+- Moog-style ladder filter (LP/BP/HP) with resonance
+- ADSR envelope (attack/decay/sustain/release)
+- Built-in reverb + delay effects
+- 10 presets: init, pad, lead, bass, pluck, strings, organ, synth-brass, supersaw
+- CLI: --note (single/chord) / --scale (range) modes
+- VST3: NEEDS_MIDI_INPUT=TRUE, IS_SYNTH=TRUE
+
+#### VC-Drum — Drum Machine
+- 4 synthesis engines: kick (freq sweep), snare (tone+noise), hihat (6 square), clap (multi-burst)
+- 10 built-in beat patterns: basic, house, techno, hiphop, trap, dnb
+- Swing + Humanize controls
+- Built-in bus compressor
+- CLI: renders N bars of drum beats to stereo WAV
+
+### Bug Fixes
+- VC-Synth Moog filter mStageTanh storing wrong value (tanh(input) vs tanh(stage_output))
+- VC-Synth scale mode segfault on buffer overflow
+
+### Plugin Count: 22 (20 effects + 2 instruments)
+
 ## [2.0.0] - 2026-05-08
 
 ### 🎉 Major Release: All Gen2 Upgrades Complete
