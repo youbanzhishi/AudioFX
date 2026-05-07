@@ -152,9 +152,6 @@ public:
     PSOLAEngine(double sampleRate = 44100.0);
 
     // Main processing: pitch-shift with optional time-stretch
-    // pitchRatios: per-analysis-hop pitch ratio (targetF0 / detectedF0)
-    // formantA: LPC coefficients per analysis frame (or nullptr if no formant preserve)
-    // formantGain: LPC gain per analysis frame
     struct ProcessParams {
         const float* input;          // Input signal
         int numSamples;              // Number of input samples
@@ -174,7 +171,6 @@ public:
     void process(const ProcessParams& params, float* output);
 
     // Detect pitch marks from YIN analysis
-    // Returns positions of pitch period markers in samples
     std::vector<int> detectPitchMarks(const float* input, int numSamples,
                                        YINPitchDetector& detector,
                                        int frameSize, int hopSize);
@@ -184,6 +180,7 @@ public:
 
 private:
     double mSampleRate;
+    LPCFormantExtractor mLPC;  // LPC instance for formant processing within PSOLA
 
     // Hanning window for PSOLA analysis frames
     std::vector<float> mHannWindow;
