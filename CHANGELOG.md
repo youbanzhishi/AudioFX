@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.5.1] - 2026-05-16
+
+### AudioFX v2.5.1 - CI VST3 Build Configuration Fix for 7 Plugins
+
+#### Bug Fixes
+- fix: CI VST3 build configuration for 7 plugins (VC-Distortion/VC-SurgicalDeEsser/VC-Noise DSP file name correction + placeholder replacement, VC-Tune placeholder replacement)
+
+
 ## [2.5.0] - 2026-05-15
 
 ### AudioFX v2.5.0 - All DSP Bugs Fixed, Full Validation Suite Passing
