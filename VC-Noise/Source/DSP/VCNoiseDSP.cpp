@@ -740,6 +740,12 @@ void VCPluginDSP::processWithProfile(float* left, float* right, int numSamples)
     if (mode == ProcessMode::Gate || mode == ProcessMode::Both) {
         mNoiseGate.process(left, right, numSamples);
     }
+
+    // 输出限幅保护，防止谱减法过冲
+    for (int i = 0; i < numSamples; ++i) {
+        left[i] = std::clamp(left[i], -1.0f, 1.0f);
+        right[i] = std::clamp(right[i], -1.0f, 1.0f);
+    }
 }
 
 //==============================================================================

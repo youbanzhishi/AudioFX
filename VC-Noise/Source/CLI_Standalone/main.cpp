@@ -483,7 +483,7 @@ int main(int argc, char** argv) {
         drwav_data_format format;
         format.container = drwav_container_riff;
         format.format = DR_WAVE_FORMAT_IEEE_FLOAT;
-        format.channels = 2;
+        format.channels = channels;
         format.sampleRate = sampleRate;
         format.bitsPerSample = 32;
 
@@ -493,10 +493,16 @@ int main(int argc, char** argv) {
             return 1;
         }
 
-        std::vector<float> output(totalFrames * 2);
-        for (drwav_uint64 i = 0; i < totalFrames; ++i) {
-            output[i * 2] = left[i];
-            output[i * 2 + 1] = right[i];
+        std::vector<float> output(totalFrames * channels);
+        if (channels == 1) {
+            for (drwav_uint64 i = 0; i < totalFrames; ++i) {
+                output[i] = left[i];  // mono: use left channel
+            }
+        } else {
+            for (drwav_uint64 i = 0; i < totalFrames; ++i) {
+                output[i * 2] = left[i];
+                output[i * 2 + 1] = right[i];
+            }
         }
         drwav_write_pcm_frames(&wavOut, totalFrames, output.data());
         drwav_uninit(&wavOut);
