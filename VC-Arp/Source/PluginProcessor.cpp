@@ -1,159 +1,294 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
-using namespace juce;
-
 //==============================================================================
 // Construction / Destruction
 //==============================================================================
-__PLUGIN_NAME__Processor::__PLUGIN_NAME__Processor()
+
+VCArpProcessor::VCArpProcessor()
     : AudioProcessor(BusesProperties()
-                     .withInput("Input", AudioChannelSet::stereo())
-                     .withOutput("Output", AudioChannelSet::stereo()))
-    , mAPVTS(*this, nullptr, Identifier("__PLUGIN_NAME__Parameters"),
-             createParameterLayout())
+        .withOutput("Output", juce::AudioChannelSet::stereo(), true)),
+      mAPVTS(*this, nullptr, "Parameters", createParameterLayout())
 {
-    // Register parameter listeners
+    mAPVTS.addParameterListener(ParameterIDs::mode, this);
+    mAPVTS.addParameterListener(ParameterIDs::rate, this);
+    mAPVTS.addParameterListener(ParameterIDs::octaveRange, this);
+    mAPVTS.addParameterListener(ParameterIDs::gate, this);
+    mAPVTS.addParameterListener(ParameterIDs::swing, this);
+    mAPVTS.addParameterListener(ParameterIDs::humanize, this);
+    mAPVTS.addParameterListener(ParameterIDs::velocityMode, this);
+    mAPVTS.addParameterListener(ParameterIDs::bpm, this);
+    mAPVTS.addParameterListener(ParameterIDs::transpose, this);
+    mAPVTS.addParameterListener(ParameterIDs::waveform, this);
+    mAPVTS.addParameterListener(ParameterIDs::volume, this);
     mAPVTS.addParameterListener(ParameterIDs::bypass, this);
-    mAPVTS.addParameterListener(ParameterIDs::gain, this);
-    mAPVTS.addParameterListener(ParameterIDs::mix, this);
 }
 
-__PLUGIN_NAME__Processor::~__PLUGIN_NAME__Processor()
+VCArpProcessor::~VCArpProcessor()
 {
 }
 
 //==============================================================================
 // Parameter Layout
 //==============================================================================
-AudioProcessorValueTreeState::ParameterLayout
-__PLUGIN_NAME__Processor::createParameterLayout()
+
+juce::AudioProcessorValueTreeState::ParameterLayout
+VCArpProcessor::createParameterLayout()
 {
-    std::vector<std::unique_ptr<RangedAudioParameter>> params;
+    std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
+
+    // Arp Mode
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        ParameterIDs::mode, "Arp Mode",
+        juce::StringArray{"Up", "Down", "Up-Down", "Down-Up",
+                          "Random", "As-Played", "Chord"}, 0));
+
+    // Rate (subdivision)
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        ParameterIDs::rate, "Rate",
+        juce::StringArray{"1/1", "1/2", "1/4", "1/8", "1/16", "1/32"}, 3));
+
+    // Octave Range
+    params.push_back(std::make_unique<juce::AudioParameterInt>(
+        ParameterIDs::octaveRange, "Octave Range", 1, 4, 1));
+
+    // Gate
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        ParameterIDs::gate, "Gate",
+        juce::NormalisableRange<float>(1.0f, 200.0f, 1.0f), 100.0f));
+
+    // Swing
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        ParameterIDs::swing, "Swing",
+        juce::NormalisableRange<float>(0.0f, 100.0f, 1.0f), 0.0f));
+
+    // Humanize
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        ParameterIDs::humanize, "Humanize",
+        juce::NormalisableRange<float>(0.0f, 100.0f, 1.0f), 0.0f));
+
+    // Velocity Mode
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        ParameterIDs::velocityMode, "Velocity Mode",
+        juce::StringArray{"Original", "Ascending", "Descending", "Random"}, 0));
+
+    // BPM
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        ParameterIDs::bpm, "BPM",
+        juce::NormalisableRange<float>(40.0f, 300.0f, 0.1f), 120.0f));
+
+    // Transpose
+    params.push_back(std::make_unique<juce::AudioParameterInt>(
+        ParameterIDs::transpose, "Transpose", -24, 24, 0));
+
+    // Waveform (internal synth)
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        ParameterIDs::waveform, "Waveform",
+        juce::StringArray{"Sine", "Saw", "Square"}, 0));
+
+    // Volume
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        ParameterIDs::volume, "Volume",
+        juce::NormalisableRange<float>(-60.0f, 12.0f, 0.1f), -6.0f));
 
     // Bypass
-    params.push_back(std::make_unique<AudioParameterBool>(
+    params.push_back(std::make_unique<juce::AudioParameterBool>(
         ParameterIDs::bypass, "Bypass", false));
 
-    // Gain
-    params.push_back(std::make_unique<AudioParameterFloat>(
-        ParameterIDs::gain, "Gain",
-        NormalisableRange<float>(-24.0f, 24.0f), 0.0f, "dB"));
-
-    // Mix
-    params.push_back(std::make_unique<AudioParameterFloat>(
-        ParameterIDs::mix, "Mix",
-        NormalisableRange<float>(0.0f, 100.0f), 100.0f, "%"));
-
-    return {params.begin(), params.end()};
+    return { params.begin(), params.end() };
 }
 
 //==============================================================================
-// Prepare to Play
+// Prepare / Release
 //==============================================================================
-void __PLUGIN_NAME__Processor::prepareToPlay(double sampleRate, int samplesPerBlock)
-{
-    mProcessSpec.sampleRate = sampleRate;
-    mProcessSpec.maximumBlockSize = static_cast<uint32_t>(samplesPerBlock);
-    mProcessSpec.numChannels = getMainBusNumOutputChannels();
 
+void VCArpProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
+{
     mDSP.prepare(sampleRate, samplesPerBlock);
 }
 
-void __PLUGIN_NAME__Processor::releaseResources()
+void VCArpProcessor::releaseResources()
 {
     mDSP.reset();
 }
 
 //==============================================================================
-// Bus Layout Support Check
-// IMPORTANT: In JUCE 8, layouts.inputBuses[] returns by value (not reference)
-// Use const auto& or auto to capture, NOT auto&
+// Bus Layout — VSTi: output only (stereo), no input bus
 //==============================================================================
-bool __PLUGIN_NAME__Processor::isBusesLayoutSupported(const BusesLayout& layouts) const
-{
-    // Only support stereo layout
-    // Note: layouts.inputBuses[0] returns by value in JUCE 8
-    const auto inputLayout = layouts.inputBuses[0];
-    const auto outputLayout = layouts.outputBuses[0];
 
-    return inputLayout == AudioChannelSet::stereo() &&
-           outputLayout == AudioChannelSet::stereo();
+bool VCArpProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
+{
+    // VSTi: output only (stereo)
+    if (layouts.getMainOutputChannelSet() != juce::AudioChannelSet::stereo())
+        return false;
+
+    // No input required
+    if (layouts.getMainInputChannelSet() != juce::AudioChannelSet::disabled())
+        return false;
+
+    return true;
 }
 
 //==============================================================================
-// Process Audio Block
+// Process Block — VSTi with MIDI input
 //==============================================================================
-void __PLUGIN_NAME__Processor::processBlock(AudioBuffer<float>& buffer,
-                                              MidiBuffer&)
+
+void VCArpProcessor::processBlock(juce::AudioBuffer<float>& buffer,
+                                   juce::MidiBuffer& midiBuffer)
 {
+    juce::ScopedNoDenormals noDenormals;
+
+    // Clear output buffer (instrument has no input)
+    buffer.clear();
+
     if (mBypass)
         return;
 
-    // Get audio data pointers
-    int numSamples = buffer.getNumSamples();
-    float* leftChannel = buffer.getWritePointer(0);
-    float* rightChannel = buffer.getWritePointer(1);
+    // Process MIDI messages → track held notes for chord input
+    for (const auto metadata : midiBuffer)
+    {
+        auto message = metadata.getMessage();
+        if (message.isNoteOn())
+        {
+            int note = message.getNoteNumber();
+            float velocity = message.getVelocity() / 127.0f;
 
-    // Process through DSP
-    mDSP.process(leftChannel, rightChannel, numSamples);
+            // Add to held notes if not already present
+            if (std::find(mHeldNotes.begin(), mHeldNotes.end(), note) == mHeldNotes.end())
+                mHeldNotes.push_back(note);
+
+            // Update arpeggiator with current chord
+            mDSP.noteOn(note, velocity);
+            mDSP.setChordNotes(mHeldNotes);
+        }
+        else if (message.isNoteOff())
+        {
+            int note = message.getNoteNumber();
+
+            // Remove from held notes
+            mHeldNotes.erase(
+                std::remove(mHeldNotes.begin(), mHeldNotes.end(), note),
+                mHeldNotes.end());
+
+            mDSP.noteOff(note);
+
+            // Update arpeggiator with remaining chord notes
+            mDSP.setChordNotes(mHeldNotes);
+        }
+    }
+
+    // Render arpeggio audio
+    auto totalNumSamples = buffer.getNumSamples();
+    if (totalNumSamples == 0)
+        return;
+
+    // Create temp buffers for DSP
+    std::vector<float> left(totalNumSamples, 0.0f);
+    std::vector<float> right(totalNumSamples, 0.0f);
+
+    mDSP.render(left.data(), right.data(), totalNumSamples);
+
+    // Copy to output buffer
+    auto* outL = buffer.getWritePointer(0);
+    auto* outR = buffer.getWritePointer(1);
+
+    for (int i = 0; i < totalNumSamples; ++i)
+    {
+        outL[i] = left[i];
+        outR[i] = right[i];
+    }
 }
 
 //==============================================================================
 // Parameter Changed Callback
 //==============================================================================
-void __PLUGIN_NAME__Processor::parameterChanged(const String& parameterID,
-                                                  float newValue)
+
+void VCArpProcessor::parameterChanged(const juce::String& parameterID, float newValue)
 {
-    if (parameterID == ParameterIDs::bypass) {
-        mBypass = newValue > 0.5f;
-        mDSP.setEnabled(!mBypass);
-    } else if (parameterID == ParameterIDs::gain) {
-        mGainDB = newValue;
-        VCPluginDSP::Params p = mDSP.getParams();
-        p.gainDB = mGainDB;
-        mDSP.setParams(p);
-    } else if (parameterID == ParameterIDs::mix) {
-        mMix = newValue;
-        VCPluginDSP::Params p = mDSP.getParams();
-        p.mix = mMix;
-        mDSP.setParams(p);
-    }
+    VCPluginDSP::Params p = mDSP.getParams();
+
+    if (parameterID == ParameterIDs::mode)
+        p.mode = static_cast<VCArpMode>((int)newValue);
+    else if (parameterID == ParameterIDs::rate)
+        p.rate = static_cast<VCArpRate>((int)newValue);
+    else if (parameterID == ParameterIDs::octaveRange)
+        p.octaveRange = (int)newValue;
+    else if (parameterID == ParameterIDs::gate)
+        p.gate = newValue;
+    else if (parameterID == ParameterIDs::swing)
+        p.swing = newValue;
+    else if (parameterID == ParameterIDs::humanize)
+        p.humanize = newValue;
+    else if (parameterID == ParameterIDs::velocityMode)
+        p.velocityMode = static_cast<VCVelocityMode>((int)newValue);
+    else if (parameterID == ParameterIDs::bpm)
+        p.bpm = newValue;
+    else if (parameterID == ParameterIDs::transpose)
+        p.transpose = (int)newValue;
+    else if (parameterID == ParameterIDs::waveform)
+        p.waveform = static_cast<VCArpSynth::Waveform>((int)newValue);
+    else if (parameterID == ParameterIDs::volume)
+        p.volumeDB = newValue;
+    else if (parameterID == ParameterIDs::bypass)
+        mBypass = (newValue > 0.5f);
+    else
+        return;
+
+    mDSP.setParams(p);
+    mDSP.setEnabled(!mBypass);
 }
 
 //==============================================================================
-// State Information
+// Program Support
 //==============================================================================
-void __PLUGIN_NAME__Processor::getStateInformation(MemoryBlock& destData)
+
+int VCArpProcessor::getNumPrograms()
+{
+    return VCPluginDSP::getNumPresets();
+}
+
+void VCArpProcessor::setCurrentProgram(int index)
+{
+    if (index < 0 || index >= VCPluginDSP::getNumPresets()) return;
+    mCurrentProgram = index;
+
+    VCPluginDSP::Params p;
+    if (VCPluginDSP::getPreset(index, p))
+        mDSP.setParams(p);
+}
+
+const juce::String VCArpProcessor::getProgramName(int index)
+{
+    const char* name = VCPluginDSP::getPresetName(index);
+    return name ? juce::String(name) : juce::String();
+}
+
+//==============================================================================
+// State Save/Restore
+//==============================================================================
+
+void VCArpProcessor::getStateInformation(juce::MemoryBlock& destData)
 {
     auto state = mAPVTS.copyState();
-    std::unique_ptr<XmlElement> xml(state.createXml());
-    if (xml != nullptr) {
-        MemoryOutputStream mos(destData, true);
-        xml->writeTo(mos, {});
+    std::unique_ptr<juce::XmlElement> xml(state.createXml());
+    copyXmlToBinary(*xml, destData);
+}
+
+void VCArpProcessor::setStateInformation(const void* data, int sizeInBytes)
+{
+    std::unique_ptr<juce::XmlElement> xml(getXmlFromBinary(data, sizeInBytes));
+    if (xml.get() != nullptr)
+    {
+        auto state = juce::ValueTree::fromXml(*xml);
+        mAPVTS.replaceState(state);
     }
-}
-
-void __PLUGIN_NAME__Processor::setStateInformation(const void* data,
-                                                      int sizeInBytes)
-{
-    auto xmlState = parseXML(String(static_cast<const char*>(data), sizeInBytes));
-    if (xmlState.get() != nullptr)
-        mAPVTS.replaceState(ValueTree::fromXml(*xmlState));
-}
-
-//==============================================================================
-// Create Editor
-//==============================================================================
-AudioProcessorEditor* __PLUGIN_NAME__Processor::createEditor()
-{
-    return new __PLUGIN_NAME__Editor(*this);
 }
 
 //==============================================================================
 // Plugin Entry Point
 //==============================================================================
-AudioProcessor* JUCE_CALLTYPE createPluginFilter()
+
+juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
-    return new __PLUGIN_NAME__Processor();
+    return new VCArpProcessor();
 }

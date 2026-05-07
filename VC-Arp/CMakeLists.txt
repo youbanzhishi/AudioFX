@@ -1,16 +1,17 @@
-# VC-Plugin-Template - VST3 Audio Plugin Template
-# Based on JUCE 8 + CMake
-# Supports: JUCE CLI + Standalone CLI + VST3 Plugin
+# VC-Arp VST3 Plugin - Arpeggiator (VSTi)
+# DSP/CLI/VST3 Three-Layer Architecture
+# Receives MIDI chords → generates arpeggio patterns → outputs audio
+# Modes: Up/Down/Up-Down/Down-Up/Random/As-Played/Chord
 
 cmake_minimum_required(VERSION 3.22)
 
 #==============================================================================
-# Plugin Configuration - Replace these placeholders
+# Plugin Configuration
 #==============================================================================
-set(PLUGIN_NAME "__PLUGIN_NAME__")
-set(PLUGIN_CODE "__PLUGIN_CODE__")
+set(PLUGIN_NAME "VC-Arp")
+set(PLUGIN_CODE "VCAr")
 set(PLUGIN_VERSION "1.0.0")
-set(MANUFACTURER_CODE "__MANUFACTURER_CODE__")
+set(MANUFACTURER_CODE "VCAU")
 
 # JUCE Path - MUST be set before project()
 set(JUCE_PATH "/opt/JUCE" CACHE PATH "Path to JUCE")
@@ -59,8 +60,6 @@ set_target_properties(${PLUGIN_NAME}-CLI PROPERTIES
 #==============================================================================
 # Target 2: Standalone CLI
 # Zero-dependency command-line tool using dr_wav
-# NOTE: dr_wav include path is ${CMAKE_SOURCE_DIR}/../Libs/dr_wav
-#       because CMAKE_SOURCE_DIR points to the plugin subdirectory
 #==============================================================================
 add_executable(${PLUGIN_NAME}-CLI-Standalone Source/CLI_Standalone/main.cpp ${DSP_SOURCES})
 
@@ -82,7 +81,8 @@ set_target_properties(${PLUGIN_NAME}-CLI-Standalone PROPERTIES
 )
 
 #==============================================================================
-# Target 3: VST3 Plugin
+# Target 3: VST3 Plugin (Virtual Instrument - Arpeggiator)
+# IS_SYNTH TRUE: JUCE auto-disables input bus, enables MIDI input
 #==============================================================================
 juce_add_plugin(${PLUGIN_NAME}
     FORMATS VST3
@@ -93,6 +93,9 @@ juce_add_plugin(${PLUGIN_NAME}
     HAS_EMBEDDED_TARGET false
     COPY_PLUGIN_AFTER_BUILD TRUE
     PRODUCT_NAME "${PLUGIN_NAME}"
+    IS_MIDI_EFFECT FALSE
+    NEEDS_MIDI_INPUT TRUE
+    IS_SYNTH TRUE
 )
 
 target_sources(${PLUGIN_NAME} PRIVATE

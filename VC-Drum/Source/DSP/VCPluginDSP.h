@@ -358,6 +358,16 @@ public:
     void reset();
 
     //==============================================================================
+    // MIDI-triggered drum methods (for VST3 instrument mode)
+    // Trigger a specific drum engine by type
+    // drumType: 0=Kick, 1=Snare, 2=HiHat, 3=Clap
+    // openHiHat: only used for HiHat (true=open, false=closed)
+    void triggerDrum(int drumType, float velocity, bool openHiHat = false);
+
+    // Render audio from active drum engines (MIDI-triggered, no sequencer)
+    void render(float* left, float* right, int numSamples);
+
+    //==============================================================================
     void setParams(const Params& p);
     Params getParams() const;
 
@@ -399,8 +409,11 @@ private:
     VCHiHatSynth  mHiHat;
     VCClapSynth   mClap;
 
-    // Sequencer
+    // Sequencer (used in CLI/standalone mode)
     VCPatternSequencer mSequencer;
+
+    // MIDI mode: when true, sequencer is bypassed and drums are triggered via triggerDrum()
+    bool mMidiMode = false;
 
     // Bus compressor
     VCDrumBusCompressor mCompressor;

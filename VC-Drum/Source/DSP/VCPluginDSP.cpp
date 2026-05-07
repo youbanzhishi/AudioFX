@@ -786,6 +786,70 @@ void VCPluginDSP::setEnabled(bool enabled)
     mEnabled = enabled;
 }
 
+//==============================================================================
+// MIDI-triggered drum methods (VST3 instrument mode)
+//==============================================================================
+
+void VCPluginDSP::triggerDrum(int drumType, float velocity, bool openHiHat)
+{
+    if (!mEnabled) return;
+    mMidiMode = true;
+
+    switch (drumType)
+    {
+        case 0: // Kick
+            mKick.noteOn(velocity);
+            break;
+        case 1: // Snare
+            mSnare.noteOn(velocity);
+            break;
+        case 2: // HiHat
+            {
+                VCHiHatSynth::Type type = openHiHat
+                    ? VCHiHatSynth::Type::Open
+                    : VCHiHatSynth::Type::Closed;
+                mHiHat.noteOn(velocity, type);
+            }
+            break;
+        case 3: // Clap
+            mClap.noteOn(velocity);
+            break;
+        default:
+            break;
+    }
+}
+
+void VCPluginDSP::render(float* left, float* right, int numSamples)
+{
+    if (!mEnabled) return;
+
+    float masterLin = dBToLinear(mParams.masterGain);
+
+    for (int i = 0; i < numSamples; ++i)
+    {
+        // Render drum synths (no sequencer — drums triggered via triggerDrum)
+        float kickSample  = mKick.processSample();
+        float snareSample = mSnare.processSample();
+        float hihatSample = mHiHat.processSample();
+        float clapSample  = mClap.processSample();
+
+        // Mix to stereo: kick/snare center, hihat/clap slightly wide
+        float kickLevel  = kickSample * 0.7f;
+        float snareLevel = snareSample * 0.5f;
+        float hihatLevel = hihatSample * 0.5f;
+        float clapLevel  = clapSample * 0.5f;
+
+        float center = kickLevel + snareLevel;
+        float sides  = hihatLevel + clapLevel;
+
+        left[i]  = (center + sides * 0.7f) * masterLin;
+        right[i] = (center + sides * 0.3f) * masterLin;
+    }
+
+    // Bus compression
+    mCompressor.process(left, right, numSamples);
+}
+
 void VCPluginDSP::renderBars(int bars, std::vector<float>& outLeft, std::vector<float>& outRight)
 {
     double samplesPerBar = 4.0 * (60.0 / mParams.bpm) * mSampleRate;

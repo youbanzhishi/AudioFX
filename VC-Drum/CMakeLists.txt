@@ -1,11 +1,11 @@
-# VC-Plugin-Template - VST3 Audio Plugin Template
-# Based on JUCE 8 + CMake
-# Supports: JUCE CLI + Standalone CLI + VST3 Plugin
+# VC-Drum VST3 Plugin - Drum Synthesizer (VSTi)
+# DSP/CLI/VST3 Three-Layer Architecture
+# 4 engines: Kick, Snare, Hi-hat, Clap + Pattern Sequencer + Bus Compressor
 
 cmake_minimum_required(VERSION 3.22)
 
 #==============================================================================
-# Plugin Configuration - Replace these placeholders
+# Plugin Configuration
 #==============================================================================
 set(PLUGIN_NAME "VC-Drum")
 set(PLUGIN_CODE "VCDR")
@@ -59,8 +59,6 @@ set_target_properties(${PLUGIN_NAME}-CLI PROPERTIES
 #==============================================================================
 # Target 2: Standalone CLI
 # Zero-dependency command-line tool using dr_wav
-# NOTE: dr_wav include path is ${CMAKE_SOURCE_DIR}/../Libs/dr_wav
-#       because CMAKE_SOURCE_DIR points to the plugin subdirectory
 #==============================================================================
 add_executable(${PLUGIN_NAME}-CLI-Standalone Source/CLI_Standalone/main.cpp ${DSP_SOURCES})
 
@@ -82,7 +80,8 @@ set_target_properties(${PLUGIN_NAME}-CLI-Standalone PROPERTIES
 )
 
 #==============================================================================
-# Target 3: VST3 Plugin
+# Target 3: VST3 Plugin (Virtual Instrument - Drum Synth)
+# IS_SYNTH TRUE: JUCE auto-disables input bus, enables MIDI input
 #==============================================================================
 juce_add_plugin(${PLUGIN_NAME}
     FORMATS VST3
@@ -93,6 +92,9 @@ juce_add_plugin(${PLUGIN_NAME}
     HAS_EMBEDDED_TARGET false
     COPY_PLUGIN_AFTER_BUILD TRUE
     PRODUCT_NAME "${PLUGIN_NAME}"
+    IS_MIDI_EFFECT FALSE
+    NEEDS_MIDI_INPUT TRUE
+    IS_SYNTH TRUE
 )
 
 target_sources(${PLUGIN_NAME} PRIVATE

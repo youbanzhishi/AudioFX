@@ -5,37 +5,19 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 //==============================================================================
-// Minimal Plugin Editor
-// TODO: Expand with your plugin's UI controls
+// VC-Arp Editor — Placeholder (GUI not yet implemented)
 //==============================================================================
-class __PLUGIN_NAME__Editor : public juce::AudioProcessorEditor
+class VCArpEditor : public juce::AudioProcessorEditor
 {
 public:
-    __PLUGIN_NAME__Editor(__PLUGIN_NAME__Processor&);
-    ~__PLUGIN_NAME__Editor() override;
+    VCArpEditor(VCArpProcessor&);
+    ~VCArpEditor() override;
 
-    //============================================================================
-    // Painting and Layout
-    //============================================================================
     void paint(juce::Graphics&) override;
     void resized() override;
 
 private:
-    //============================================================================
-    // TODO: Define control members
-    // Example:
-    // juce::Label gainLabel;
-    // juce::Slider gainSlider;
-    // std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> gainAttachment;
-    //============================================================================
+    VCArpProcessor& mProcessor;
 
-    //============================================================================
-    // Processor reference
-    //============================================================================
-    __PLUGIN_NAME__Processor& processor;
-
-    //============================================================================
-    // Non-copyable
-    //============================================================================
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(__PLUGIN_NAME__Editor)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(VCArpEditor)
 };
