@@ -1,19 +1,10 @@
 #include "VCPluginDSP.h"
 
 //==============================================================================
-// Standalone mode includes
-//==============================================================================
-#ifdef VC_STANDALONE
-#include <algorithm>
-#include <cmath>
-#endif
-
-//==============================================================================
 // Construction / Destruction
 //==============================================================================
 VCPluginDSP::VCPluginDSP()
 {
-    // Initialize default parameters for Dynamic EQ
     mParams.frequency = 200.0f;
     mParams.gain = -6.0f;
     mParams.q = 1.0f;
@@ -23,6 +14,8 @@ VCPluginDSP::VCPluginDSP()
     mParams.release = 100.0f;
     mParams.mix = 100.0f;
     mParams.enabled = true;
+    mParams.bands = 1;
+    mParams.sidechain = 0;
 }
 
 VCPluginDSP::~VCPluginDSP()
@@ -37,26 +30,22 @@ void VCPluginDSP::prepare(double sampleRate, int blockSize)
     mSampleRate = sampleRate;
     mBlockSize = blockSize;
 
-    // Resize internal buffer for stereo processing
     mInternalBuffer.resize(blockSize * 2);
-
-    // Create pointer array for AudioBlock
     mInternalPtrs.resize(2);
     mInternalPtrs[0] = mInternalBuffer.data();
     mInternalPtrs[1] = mInternalBuffer.data() + blockSize;
 
-#ifdef VC_STANDALONE
-    // Initialize IIR states
-    for (int i = 0; i < 2; ++i) {
-        mEQState[i] = IIRState();
-        mBPState[i] = IIRState();
-        mEnvelope[i] = 0.0f;
+    // Initialize all band processors
+    for (int b = 0; b < VC_DYN_EQ_MAX_BANDS; ++b) {
+        for (int ch = 0; ch < 2; ++ch) {
+            mBandProc[b].eqState[ch].reset();
+            mBandProc[b].bpState[ch].reset();
+            mBandProc[b].envelope[ch] = 0.0f;
+            mBandProc[b].smoothGain[ch] = 1.0f;
+        }
     }
-    updateEQCoefficients();
-    updateBPCoefficients();
-#else
-    // In JUCE mode, coefficients are updated via setParams()
-#endif
+
+    updateAllBandCoefficients();
 }
 
 //==============================================================================
@@ -68,10 +57,8 @@ void VCPluginDSP::process(float* left, float* right, int numSamples)
         return;
 
 #ifdef VC_STANDALONE
-    processIIR(left, right, numSamples);
+    processInternal(left, right, numSamples);
 #else
-    // JUCE: use AudioBlock (non-interleaved layout)
-    // Copy to non-interleaved internal buffer: [LLLL...RRRR...]
     if ((int)mInternalBuffer.size() < numSamples * 2)
         mInternalBuffer.resize(numSamples * 2);
 
@@ -86,11 +73,9 @@ void VCPluginDSP::process(float* left, float* right, int numSamples)
     mInternalPtrs[0] = leftBuf;
     mInternalPtrs[1] = rightBuf;
 
-    // Create AudioBlock from non-interleaved channel pointers
     juce::dsp::AudioBlock<float> block(mInternalPtrs.data(), 2, numSamples);
     process(block);
 
-    // Copy back
     for (int i = 0; i < numSamples; ++i) {
         left[i] = leftBuf[i];
         right[i] = rightBuf[i];
@@ -107,48 +92,54 @@ void VCPluginDSP::process(juce::dsp::AudioBlock<float>& block)
     if (!mEnabled)
         return;
 
-    // Using JUCE DSP module's IIR filter
-    // Process each channel
     float wet = mParams.mix / 100.0f;
     float dry = 1.0f - wet;
-    
-    float threshGain = dBToLinear(mParams.threshold);
-    float maxRangeGain = dBToLinear(mParams.range);
-    float attackCoeff = std::exp(-1.0f / (mParams.attack * 0.001f * mSampleRate));
-    float releaseCoeff = std::exp(-1.0f / (mParams.release * 0.001f * mSampleRate));
+    int numBands = VC_JCLAMP(mParams.bands, 1, VC_DYN_EQ_MAX_BANDS);
 
-    // Simple implementation: apply static EQ gain per channel
-    // Dynamic detection is done by analyzing input level
-    float staticGain = dBToLinear(mParams.gain);
-    
-    for (size_t ch = 0; ch < block.getNumChannels(); ++ch) {
-        auto* data = block.getChannelPointer(ch);
-        for (size_t i = 0; i < block.getNumSamples(); ++i) {
-            float in = data[i];
-            
-            // Apply static EQ gain (simplified - real impl uses IIR filter)
-            float eqOut = in * staticGain;
-            
-            // Envelope follower for dynamic gain
-            float env = std::abs(in);
-            if (env > mEnvelope[ch]) {
-                mEnvelope[ch] = attackCoeff * mEnvelope[ch] + (1.0f - attackCoeff) * env;
-            } else {
-                mEnvelope[ch] = releaseCoeff * mEnvelope[ch] + (1.0f - releaseCoeff) * env;
+    // Process each band serially
+    for (int b = 0; b < numBands; ++b) {
+        const auto& bp = mParams.band[b];
+        float threshGain = dBToLinear(bp.threshold);
+        float attackCoeff = std::exp(-1.0f / (bp.attack * 0.001f * mSampleRate));
+        float releaseCoeff = std::exp(-1.0f / (bp.release * 0.001f * mSampleRate));
+        float ratio = VC_JMAX(bp.ratio, 1.0f);
+
+        for (size_t ch = 0; ch < block.getNumChannels(); ++ch) {
+            auto* data = block.getChannelPointer(ch);
+            int chIdx = (int)ch;
+
+            for (size_t i = 0; i < block.getNumSamples(); ++i) {
+                float in = data[i];
+
+                // 1. Apply EQ filter
+                float eqOut = mBandProc[b].eqState[chIdx].process(in);
+
+                // 2. Bandpass detection
+                float det = mBandProc[b].bpState[chIdx].process(in);
+                float env = std::abs(det);
+
+                if (env > mBandProc[b].envelope[chIdx]) {
+                    mBandProc[b].envelope[chIdx] = attackCoeff * mBandProc[b].envelope[chIdx] + (1.0f - attackCoeff) * env;
+                } else {
+                    mBandProc[b].envelope[chIdx] = releaseCoeff * mBandProc[b].envelope[chIdx] + (1.0f - releaseCoeff) * env;
+                }
+
+                // 3. Dynamic gain calculation
+                float dynamicGain = 1.0f;
+                if (mBandProc[b].envelope[chIdx] > threshGain) {
+                    float overDb = VCStandalone::gainToDecibels(mBandProc[b].envelope[chIdx] / threshGain);
+                    float gainReductionDb = -overDb * (1.0f - 1.0f / ratio);
+                    dynamicGain = dBToLinear(gainReductionDb);
+                }
+
+                // 4. Smooth the gain
+                mBandProc[b].smoothGain[chIdx] = 0.999f * mBandProc[b].smoothGain[chIdx] + 0.001f * dynamicGain;
+
+                // 5. Apply: dry + (eq - dry) * smoothGain = dry + eq*smoothGain - dry*smoothGain
+                // Simplified: out = in + (eqOut - in) * smoothGain
+                float out = in + (eqOut - in) * mBandProc[b].smoothGain[chIdx];
+                data[i] = dry * in + wet * out;
             }
-            
-            // Calculate dynamic gain based on threshold
-            float dynamicGain = 1.0f;
-            if (mEnvelope[ch] > threshGain) {
-                float overRatio = (mEnvelope[ch] - threshGain) / threshGain;
-                dynamicGain = 1.0f + (maxRangeGain - 1.0f) * VC_JCLAMP(overRatio, 0.0f, 1.0f);
-            }
-            
-            // Apply dynamic gain
-            float out = eqOut * dynamicGain;
-            
-            // Dry/Wet mix
-            data[i] = dry * in + wet * out;
         }
     }
 }
@@ -159,13 +150,14 @@ void VCPluginDSP::process(juce::dsp::AudioBlock<float>& block)
 //==============================================================================
 void VCPluginDSP::reset()
 {
-#ifdef VC_STANDALONE
-    for (int i = 0; i < 2; ++i) {
-        mEQState[i] = IIRState();
-        mBPState[i] = IIRState();
-        mEnvelope[i] = 0.0f;
+    for (int b = 0; b < VC_DYN_EQ_MAX_BANDS; ++b) {
+        for (int ch = 0; ch < 2; ++ch) {
+            mBandProc[b].eqState[ch].reset();
+            mBandProc[b].bpState[ch].reset();
+            mBandProc[b].envelope[ch] = 0.0f;
+            mBandProc[b].smoothGain[ch] = 1.0f;
+        }
     }
-#endif
 }
 
 //==============================================================================
@@ -174,11 +166,16 @@ void VCPluginDSP::reset()
 void VCPluginDSP::setParams(const Params& p)
 {
     mParams = p;
-    
-#ifdef VC_STANDALONE
-    updateEQCoefficients();
-    updateBPCoefficients();
-#endif
+
+    // Sync Gen1 compat params to band[0]
+    mParams.band[0].frequency = mParams.frequency;
+    mParams.band[0].gain = mParams.gain;
+    mParams.band[0].q = mParams.q;
+    mParams.band[0].threshold = mParams.threshold;
+    mParams.band[0].attack = mParams.attack;
+    mParams.band[0].release = mParams.release;
+
+    updateAllBandCoefficients();
 }
 
 //==============================================================================
@@ -198,105 +195,154 @@ void VCPluginDSP::setEnabled(bool enabled)
 }
 
 //==============================================================================
-// Standalone IIR processing - Dynamic EQ implementation
+// Standalone IIR processing - Gen2 Multi-band Dynamic EQ
 //==============================================================================
 #ifdef VC_STANDALONE
 
-// Peaking EQ coefficients (Robert Bristow-Johnson formula)
-void VCPluginDSP::updateEQCoefficients()
+void VCPluginDSP::updateBandCoefficients(int bandIdx)
 {
-    float freq = VC_JCLAMP(mParams.frequency, 20.0f, (float)mSampleRate * 0.49f);
-    float gainDB = mParams.gain;
-    float Q = VC_JCLAMP(mParams.q, 0.1f, 10.0f);
-    
+    if (bandIdx < 0 || bandIdx >= VC_DYN_EQ_MAX_BANDS) return;
+
+    const auto& bp = mParams.band[bandIdx];
+    float freq = VC_JCLAMP(bp.frequency, 20.0f, (float)mSampleRate * 0.49f);
+    float Q = VC_JCLAMP(bp.q, 0.1f, 10.0f);
+    float gainDB = bp.gain;
+
+    float omega = 2.0f * VC_PI * freq / static_cast<float>(mSampleRate);
+    float sn = std::sin(omega);
+    float cs = std::cos(omega);
+    float alpha = sn / (2.0f * Q);
     float A = std::pow(10.0f, gainDB / 40.0f);
-    float omega = 2.0f * VC_PI * freq / static_cast<float>(mSampleRate);
-    float sn = std::sin(omega);
-    float cs = std::cos(omega);
-    float alpha = sn / (2.0f * Q);
-    
-    float b0 = 1.0f + alpha * A;
-    float b1 = -2.0f * cs;
-    float b2 = 1.0f - alpha * A;
-    float a0 = 1.0f + alpha / A;
-    float a1 = -2.0f * cs;
-    float a2 = 1.0f - alpha / A;
-    
-    // Normalize by a0
-    for (int i = 0; i < 2; ++i) {
-        mEQState[i].b0 = b0 / a0;
-        mEQState[i].b1 = b1 / a0;
-        mEQState[i].b2 = b2 / a0;
-        mEQState[i].a1 = a1 / a0;
-        mEQState[i].a2 = a2 / a0;
+
+    float b0, b1, b2, a0, a1, a2;
+
+    switch (bp.type) {
+    case VCBandType::LowShelf: {
+        float sqA = std::sqrt(A);
+        b0 = A * ((A + 1.0f) - (A - 1.0f) * cs + 2.0f * sqA * alpha);
+        b1 = 2.0f * A * ((A - 1.0f) - (A + 1.0f) * cs);
+        b2 = A * ((A + 1.0f) - (A - 1.0f) * cs - 2.0f * sqA * alpha);
+        a0 = (A + 1.0f) + (A - 1.0f) * cs + 2.0f * sqA * alpha;
+        a1 = -2.0f * ((A - 1.0f) + (A + 1.0f) * cs);
+        a2 = (A + 1.0f) + (A - 1.0f) * cs - 2.0f * sqA * alpha;
+        break;
+    }
+    case VCBandType::HighShelf: {
+        float sqA = std::sqrt(A);
+        b0 = A * ((A + 1.0f) + (A - 1.0f) * cs + 2.0f * sqA * alpha);
+        b1 = -2.0f * A * ((A - 1.0f) + (A + 1.0f) * cs);
+        b2 = A * ((A + 1.0f) + (A - 1.0f) * cs - 2.0f * sqA * alpha);
+        a0 = (A + 1.0f) - (A - 1.0f) * cs + 2.0f * sqA * alpha;
+        a1 = 2.0f * ((A - 1.0f) - (A + 1.0f) * cs);
+        a2 = (A + 1.0f) - (A - 1.0f) * cs - 2.0f * sqA * alpha;
+        break;
+    }
+    case VCBandType::Notch: {
+        b0 = 1.0f;
+        b1 = -2.0f * cs;
+        b2 = 1.0f;
+        a0 = 1.0f + alpha;
+        a1 = -2.0f * cs;
+        a2 = 1.0f - alpha;
+        break;
+    }
+    case VCBandType::Bell:
+    default: {
+        // Peaking EQ (Robert Bristow-Johnson)
+        b0 = 1.0f + alpha * A;
+        b1 = -2.0f * cs;
+        b2 = 1.0f - alpha * A;
+        a0 = 1.0f + alpha / A;
+        a1 = -2.0f * cs;
+        a2 = 1.0f - alpha / A;
+        break;
+    }
+    }
+
+    // Normalize
+    for (int ch = 0; ch < 2; ++ch) {
+        mBandProc[bandIdx].eqState[ch].b0 = b0 / a0;
+        mBandProc[bandIdx].eqState[ch].b1 = b1 / a0;
+        mBandProc[bandIdx].eqState[ch].b2 = b2 / a0;
+        mBandProc[bandIdx].eqState[ch].a1 = a1 / a0;
+        mBandProc[bandIdx].eqState[ch].a2 = a2 / a0;
+    }
+
+    // Bandpass for detection (always bandpass regardless of band type)
+    float bpAlpha = sn / (2.0f * Q);
+    float bp_b0 = bpAlpha;
+    float bp_b1 = 0.0f;
+    float bp_b2 = -bpAlpha;
+    float bp_a0 = 1.0f + bpAlpha;
+    float bp_a1 = -2.0f * cs;
+    float bp_a2 = 1.0f - bpAlpha;
+
+    for (int ch = 0; ch < 2; ++ch) {
+        mBandProc[bandIdx].bpState[ch].b0 = bp_b0 / bp_a0;
+        mBandProc[bandIdx].bpState[ch].b1 = bp_b1 / bp_a0;
+        mBandProc[bandIdx].bpState[ch].b2 = bp_b2 / bp_a0;
+        mBandProc[bandIdx].bpState[ch].a1 = bp_a1 / bp_a0;
+        mBandProc[bandIdx].bpState[ch].a2 = bp_a2 / bp_a0;
     }
 }
 
-// Bandpass filter coefficients for detection
-void VCPluginDSP::updateBPCoefficients()
+void VCPluginDSP::updateAllBandCoefficients()
 {
-    float freq = VC_JCLAMP(mParams.frequency, 20.0f, (float)mSampleRate * 0.49f);
-    float Q = VC_JCLAMP(mParams.q, 0.1f, 10.0f);
-    
-    float omega = 2.0f * VC_PI * freq / static_cast<float>(mSampleRate);
-    float sn = std::sin(omega);
-    float cs = std::cos(omega);
-    float alpha = sn / (2.0f * Q);
-    
-    float b0 = alpha;
-    float b1 = 0.0f;
-    float b2 = -alpha;
-    float a0 = 1.0f + alpha;
-    float a1 = -2.0f * cs;
-    float a2 = 1.0f - alpha;
-    
-    // Normalize by a0
-    for (int i = 0; i < 2; ++i) {
-        mBPState[i].b0 = b0 / a0;
-        mBPState[i].b1 = b1 / a0;
-        mBPState[i].b2 = b2 / a0;
-        mBPState[i].a1 = a1 / a0;
-        mBPState[i].a2 = a2 / a0;
+    for (int b = 0; b < VC_DYN_EQ_MAX_BANDS; ++b) {
+        updateBandCoefficients(b);
     }
 }
 
-void VCPluginDSP::processIIR(float* left, float* right, int numSamples)
+void VCPluginDSP::processInternal(float* left, float* right, int numSamples)
 {
     float wet = mParams.mix / 100.0f;
     float dry = 1.0f - wet;
-    float threshGain = VCStandalone::decibelsToGain(mParams.threshold);
-    float maxRangeGain = VCStandalone::decibelsToGain(mParams.range);
-    float attackCoeff = std::exp(-1.0f / (mParams.attack * 0.001f * mSampleRate));
-    float releaseCoeff = std::exp(-1.0f / (mParams.release * 0.001f * mSampleRate));
-    
-    float* channels[2] = { left, right };
-    
-    for (int i = 0; i < numSamples; ++i) {
-        for (int ch = 0; ch < 2; ++ch) {
-            float in = channels[ch][i];
-            
-            // 1. Apply static EQ
-            float eqOut = mEQState[ch].process(in);
-            
-            // 2. Detect band energy via bandpass
-            float bp = mBPState[ch].process(in);
-            float env = std::abs(bp);
-            if (env > mEnvelope[ch]) {
-                mEnvelope[ch] = attackCoeff * mEnvelope[ch] + (1.0f - attackCoeff) * env;
-            } else {
-                mEnvelope[ch] = releaseCoeff * mEnvelope[ch] + (1.0f - releaseCoeff) * env;
+    int numBands = VC_JCLAMP(mParams.bands, 1, VC_DYN_EQ_MAX_BANDS);
+
+    // Process bands serially - each band processes the output of the previous
+    for (int b = 0; b < numBands; ++b) {
+        const auto& bp = mParams.band[b];
+        float threshGain = VCStandalone::decibelsToGain(bp.threshold);
+        float attackCoeff = std::exp(-1.0f / (bp.attack * 0.001f * mSampleRate));
+        float releaseCoeff = std::exp(-1.0f / (bp.release * 0.001f * mSampleRate));
+        float ratio = VC_JMAX(bp.ratio, 1.0f);
+
+        float* channels[2] = { left, right };
+
+        for (int i = 0; i < numSamples; ++i) {
+            for (int ch = 0; ch < 2; ++ch) {
+                float in = channels[ch][i];
+
+                // 1. Apply EQ filter for this band
+                float eqOut = mBandProc[b].eqState[ch].process(in);
+
+                // 2. Bandpass detection on input signal
+                float det = mBandProc[b].bpState[ch].process(in);
+                float env = std::abs(det);
+
+                // 3. Envelope follower
+                if (env > mBandProc[b].envelope[ch]) {
+                    mBandProc[b].envelope[ch] = attackCoeff * mBandProc[b].envelope[ch] + (1.0f - attackCoeff) * env;
+                } else {
+                    mBandProc[b].envelope[ch] = releaseCoeff * mBandProc[b].envelope[ch] + (1.0f - releaseCoeff) * env;
+                }
+
+                // 4. Dynamic gain calculation
+                float dynamicGain = 1.0f;
+                if (mBandProc[b].envelope[ch] > threshGain) {
+                    float overDb = VCStandalone::gainToDecibels(mBandProc[b].envelope[ch] / threshGain);
+                    float gainReductionDb = -overDb * (1.0f - 1.0f / ratio);
+                    dynamicGain = VCStandalone::decibelsToGain(gainReductionDb);
+                }
+
+                // 5. Smooth the dynamic gain
+                mBandProc[b].smoothGain[ch] = 0.999f * mBandProc[b].smoothGain[ch] + 0.001f * dynamicGain;
+
+                // 6. Apply: blend between dry and dynamically-gained EQ output
+                // out = in + (eqOut - in) * smoothGain
+                float out = in + (eqOut - in) * mBandProc[b].smoothGain[ch];
+                channels[ch][i] = dry * in + wet * out;
             }
-            
-            // 3. Calculate dynamic gain
-            float dynamicGain = 1.0f;
-            if (mEnvelope[ch] > threshGain) {
-                float overRatio = (mEnvelope[ch] - threshGain) / threshGain;
-                dynamicGain = 1.0f + (maxRangeGain - 1.0f) * VC_JCLAMP(overRatio, 0.0f, 1.0f);
-            }
-            
-            // 4. Apply dynamic gain to EQ output
-            float out = eqOut * dynamicGain;
-            channels[ch][i] = dry * in + wet * out;
         }
     }
 }

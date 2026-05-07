@@ -1,5 +1,5 @@
-// VC-DynamicEQ Standalone CLI - No JUCE Dependency
-// Dynamic Equalizer: EQ + Compressor on specific frequency band
+// VC-DynamicEQ Gen2 Standalone CLI - No JUCE Dependency
+// Multi-band Dynamic EQ with sidechain support, band types, attack/release
 // Uses dr_wav for WAV I/O
 
 //==============================================================================
@@ -16,12 +16,54 @@
 #include <map>
 #include <cmath>
 #include <set>
+#include <sstream>
 
 // Include DSP header AFTER DR_WAV_IMPLEMENTATION and VC_STANDALONE
 #include "../DSP/VCPluginDSP.h"
 
 //==============================================================================
-// Dynamic EQ Presets
+// Helper: parse comma-separated float list
+//==============================================================================
+std::vector<float> parseFloatList(const std::string& s) {
+    std::vector<float> result;
+    std::stringstream ss(s);
+    std::string item;
+    while (std::getline(ss, item, ',')) {
+        try { result.push_back(std::stof(item)); }
+        catch (...) {}
+    }
+    return result;
+}
+
+std::vector<std::string> parseStringList(const std::string& s) {
+    std::vector<std::string> result;
+    std::stringstream ss(s);
+    std::string item;
+    while (std::getline(ss, item, ',')) {
+        result.push_back(item);
+    }
+    return result;
+}
+
+VCBandType parseBandType(const std::string& s) {
+    if (s == "ls" || s == "lowshelf") return VCBandType::LowShelf;
+    if (s == "hs" || s == "highshelf") return VCBandType::HighShelf;
+    if (s == "notch") return VCBandType::Notch;
+    return VCBandType::Bell;
+}
+
+//==============================================================================
+// Helper to set band params
+//==============================================================================
+void setBand(VCPluginDSP::BandParams& bp, float freq, float q, VCBandType type,
+             float threshold, float ratio, float attack, float release, float gain) {
+    bp.frequency = freq; bp.q = q; bp.type = type;
+    bp.threshold = threshold; bp.ratio = ratio;
+    bp.attack = attack; bp.release = release; bp.gain = gain;
+}
+
+//==============================================================================
+// Gen2 Presets
 //==============================================================================
 struct Preset {
     const char* name;
@@ -29,34 +71,75 @@ struct Preset {
 };
 
 static const Preset presets[] = {
-    {"bypass", {200.0f, -6.0f, 1.0f, -12.0f, -12.0f, 10.0f, 100.0f, 100.0f, false}},
-    {"de-boom", {150.0f, 0.0f, 2.0f, -18.0f, -12.0f, 10.0f, 150.0f, 100.0f, true}},
-    {"de-harsh", {3500.0f, 0.0f, 1.5f, -15.0f, -8.0f, 5.0f, 80.0f, 100.0f, true}},
-    {"presence-boost", {4000.0f, 3.0f, 1.0f, -10.0f, 6.0f, 15.0f, 120.0f, 100.0f, true}},
+    {"bypass", []() {
+        VCPluginDSP::Params p; p.bands = 1; p.enabled = false; p.mix = 100.0f;
+        setBand(p.band[0], 200, 1.0f, VCBandType::Bell, -12, 3, 10, 100, -6);
+        return p;
+    }()},
+    {"de-ess", []() {
+        VCPluginDSP::Params p; p.bands = 1; p.enabled = true; p.mix = 100.0f;
+        setBand(p.band[0], 6000, 2.0f, VCBandType::Bell, -15, 4, 1, 50, 0);
+        return p;
+    }()},
+    {"bass-control", []() {
+        VCPluginDSP::Params p; p.bands = 1; p.enabled = true; p.mix = 100.0f;
+        setBand(p.band[0], 120, 0.7f, VCBandType::LowShelf, -18, 3, 10, 150, 0);
+        return p;
+    }()},
+    {"presence-boost", []() {
+        VCPluginDSP::Params p; p.bands = 1; p.enabled = true; p.mix = 100.0f;
+        setBand(p.band[0], 4000, 1.0f, VCBandType::HighShelf, -10, 2, 15, 120, 3);
+        return p;
+    }()},
+    {"vocal-tamer", []() {
+        VCPluginDSP::Params p; p.bands = 2; p.enabled = true; p.mix = 100.0f;
+        setBand(p.band[0], 2500, 2.0f, VCBandType::Bell, -12, 3, 5, 80, 0);
+        setBand(p.band[1], 5000, 1.5f, VCBandType::Bell, -10, 3, 5, 80, 0);
+        return p;
+    }()},
+    {"multi-band", []() {
+        VCPluginDSP::Params p; p.bands = 4; p.enabled = true; p.mix = 100.0f;
+        setBand(p.band[0], 100, 0.7f, VCBandType::LowShelf, -18, 3, 10, 150, 0);
+        setBand(p.band[1], 500, 1.5f, VCBandType::Bell, -12, 3, 8, 100, 0);
+        setBand(p.band[2], 3000, 1.0f, VCBandType::Bell, -10, 3, 5, 80, 0);
+        setBand(p.band[3], 10000, 0.7f, VCBandType::HighShelf, -15, 2, 8, 120, 0);
+        return p;
+    }()},
 };
 
 //==============================================================================
 // Help text
 //==============================================================================
 void printHelp(const char* progName) {
-    std::cout << "VC-DynamicEQ Standalone CLI (No JUCE)\n";
-    std::cout << "Dynamic Equalizer - EQ + Compressor on specific frequency band\n\n";
+    std::cout << "VC-DynamicEQ Gen2 Standalone CLI (No JUCE)\n";
+    std::cout << "Multi-band Dynamic EQ with sidechain, band types\n\n";
     std::cout << "Usage: " << progName << " <input.wav> <output.wav> [options]\n\n";
     std::cout << "Options:\n";
-    std::cout << "  --help, -h            Show this help\n";
-    std::cout << "  --preset <name>       Preset (bypass, de-boom, de-harsh, presence-boost)\n";
-    std::cout << "  --frequency <Hz>      Center frequency (20~20000)\n";
-    std::cout << "  --gain <dB>           Static gain (-18~+18)\n";
-    std::cout << "  --q <value>           Q value (0.1~10)\n";
-    std::cout << "  --threshold <dB>      Dynamic threshold (-48~0)\n";
-    std::cout << "  --range <dB>          Dynamic range (-24~+24, negative=attenuate)\n";
-    std::cout << "  --attack <ms>         Attack time (0.1~50)\n";
-    std::cout << "  --release <ms>        Release time (10~500)\n";
-    std::cout << "  --mix <0-100>         Dry/Wet mix percentage\n";
-    std::cout << "  --bypass <0|1>        Bypass processing\n\n";
+    std::cout << "  --help, -h              Show this help\n";
+    std::cout << "  --preset <name>         Preset (bypass, de-ess, bass-control,\n";
+    std::cout << "                           presence-boost, vocal-tamer, multi-band)\n";
+    std::cout << "  --bands <1-4>           Number of dynamic bands (default: 1)\n";
+    std::cout << "  --band-freq <Hz,...>    Comma-separated center frequency per band\n";
+    std::cout << "  --band-q <Q,...>        Comma-separated Q value per band\n";
+    std::cout << "  --band-type <t,...>     Comma-separated band type per band\n";
+    std::cout << "                           (bell, ls, hs, notch)\n";
+    std::cout << "  --band-threshold <dB,..> Comma-separated threshold per band\n";
+    std::cout << "  --band-ratio <r,...>    Comma-separated ratio per band\n";
+    std::cout << "  --band-attack <ms,...>  Comma-separated attack per band\n";
+    std::cout << "  --band-release <ms,...> Comma-separated release per band\n";
+    std::cout << "  --sidechain <int|ext>   Sidechain mode (default: internal)\n";
+    std::cout << "  --frequency <Hz>        Center frequency (Gen1 compat, sets band 0)\n";
+    std::cout << "  --gain <dB>             Static gain (Gen1 compat, sets band 0)\n";
+    std::cout << "  --q <value>             Q value (Gen1 compat, sets band 0)\n";
+    std::cout << "  --threshold <dB>        Threshold (Gen1 compat, sets band 0)\n";
+    std::cout << "  --attack <ms>           Attack (Gen1 compat, sets band 0)\n";
+    std::cout << "  --release <ms>          Release (Gen1 compat, sets band 0)\n";
+    std::cout << "  --mix <0-100>           Dry/Wet mix percentage\n";
+    std::cout << "  --bypass <0|1>          Bypass processing\n\n";
     std::cout << "Examples:\n";
-    std::cout << "  " << progName << " in.wav out.wav --preset de-boom\n";
-    std::cout << "  " << progName << " in.wav out.wav --frequency 200 --gain -6 --threshold -12\n";
+    std::cout << "  " << progName << " in.wav out.wav --preset de-ess\n";
+    std::cout << "  " << progName << " in.wav out.wav --bands 2 --band-freq 200,3000 --band-type bell,bell\n";
+    std::cout << "  " << progName << " in.wav out.wav --frequency 200 --threshold -12 --ratio 4\n";
 }
 
 //==============================================================================
@@ -94,15 +177,18 @@ bool loadPreset(const std::string& name, VCPluginDSP::Params& p) {
     return false;
 }
 
-
 float getFloatArg(const std::map<std::string, std::string>& args, const std::string& key, float defaultVal) {
     auto it = args.find(key);
     if (it != args.end() && !it->second.empty()) {
-        try {
-            return std::stof(it->second);
-        } catch (...) {
-            return defaultVal;
-        }
+        try { return std::stof(it->second); } catch (...) { return defaultVal; }
+    }
+    return defaultVal;
+}
+
+int getIntArg(const std::map<std::string, std::string>& args, const std::string& key, int defaultVal) {
+    auto it = args.find(key);
+    if (it != args.end() && !it->second.empty()) {
+        try { return std::stoi(it->second); } catch (...) { return defaultVal; }
     }
     return defaultVal;
 }
@@ -122,7 +208,6 @@ int main(int argc, char** argv) {
         return 0;
     }
 
-    // Parse input/output files
     std::vector<std::string> files;
     for (int i = 1; i < argc; ++i) {
         if (argv[i][0] != '-') {
@@ -139,13 +224,13 @@ int main(int argc, char** argv) {
     std::string inFile = files[0];
     std::string outFile = files[1];
 
-    std::cout << "VC-DynamicEQ Standalone CLI (No JUCE)\n";
+    std::cout << "VC-DynamicEQ Gen2 Standalone CLI\n";
     std::cout << "Input: " << inFile << "\n";
     std::cout << "Output: " << outFile << "\n";
 
-    //============================================================================
+    //==========================================================================
     // Read audio file using dr_wav
-    //============================================================================
+    //==========================================================================
     unsigned int channels = 0;
     unsigned int sampleRate = 0;
     drwav_uint64 totalFrames = 0;
@@ -162,7 +247,6 @@ int main(int argc, char** argv) {
     std::cout << "Channels: " << channels << "\n";
     std::cout << "Total frames: " << totalFrames << "\n";
 
-    // Convert interleaved to L/R arrays
     std::vector<float> left(totalFrames);
     std::vector<float> right(totalFrames);
 
@@ -179,15 +263,14 @@ int main(int argc, char** argv) {
 
     drwav_free(pSampleData, NULL);
 
-    //============================================================================
+    //==========================================================================
     // Initialize DSP
-    //============================================================================
+    //==========================================================================
     VCPluginDSP dsp;
     dsp.prepare(sampleRate, 4096);
 
     VCPluginDSP::Params params;
 
-    // Load preset if specified
     if (args.count("--preset")) {
         std::string presetName = args["--preset"];
         std::cout << "Preset: " << presetName << "\n";
@@ -198,52 +281,113 @@ int main(int argc, char** argv) {
         dsp.setParams(params);
     }
 
-    // Override with command line parameters
+    // Gen2: --bands
+    if (args.count("--bands")) {
+        params.bands = getIntArg(args, "--bands", params.bands);
+        params.bands = std::clamp(params.bands, 1, VC_DYN_EQ_MAX_BANDS);
+        std::cout << "Bands: " << params.bands << "\n";
+    }
+
+    // Gen2: per-band parameters (comma-separated lists)
+    if (args.count("--band-freq")) {
+        auto vals = parseFloatList(args["--band-freq"]);
+        for (int i = 0; i < (int)vals.size() && i < VC_DYN_EQ_MAX_BANDS; ++i)
+            params.band[i].frequency = vals[i];
+        std::cout << "Band frequencies set\n";
+    }
+
+    if (args.count("--band-q")) {
+        auto vals = parseFloatList(args["--band-q"]);
+        for (int i = 0; i < (int)vals.size() && i < VC_DYN_EQ_MAX_BANDS; ++i)
+            params.band[i].q = vals[i];
+        std::cout << "Band Q values set\n";
+    }
+
+    if (args.count("--band-type")) {
+        auto vals = parseStringList(args["--band-type"]);
+        for (int i = 0; i < (int)vals.size() && i < VC_DYN_EQ_MAX_BANDS; ++i)
+            params.band[i].type = parseBandType(vals[i]);
+        std::cout << "Band types set\n";
+    }
+
+    if (args.count("--band-threshold")) {
+        auto vals = parseFloatList(args["--band-threshold"]);
+        for (int i = 0; i < (int)vals.size() && i < VC_DYN_EQ_MAX_BANDS; ++i)
+            params.band[i].threshold = vals[i];
+        std::cout << "Band thresholds set\n";
+    }
+
+    if (args.count("--band-ratio")) {
+        auto vals = parseFloatList(args["--band-ratio"]);
+        for (int i = 0; i < (int)vals.size() && i < VC_DYN_EQ_MAX_BANDS; ++i)
+            params.band[i].ratio = vals[i];
+        std::cout << "Band ratios set\n";
+    }
+
+    if (args.count("--band-attack")) {
+        auto vals = parseFloatList(args["--band-attack"]);
+        for (int i = 0; i < (int)vals.size() && i < VC_DYN_EQ_MAX_BANDS; ++i)
+            params.band[i].attack = vals[i];
+        std::cout << "Band attacks set\n";
+    }
+
+    if (args.count("--band-release")) {
+        auto vals = parseFloatList(args["--band-release"]);
+        for (int i = 0; i < (int)vals.size() && i < VC_DYN_EQ_MAX_BANDS; ++i)
+            params.band[i].release = vals[i];
+        std::cout << "Band releases set\n";
+    }
+
+    if (args.count("--sidechain")) {
+        params.sidechain = (args["--sidechain"] == "external") ? 1 : 0;
+        std::cout << "Sidechain: " << (params.sidechain ? "external" : "internal") << "\n";
+    }
+
+    // Gen1 compat overrides (sets band 0)
     if (args.count("--frequency")) {
-        params.frequency = getFloatArg(args, "--frequency", params.frequency);
-        dsp.setParams(params);
-        std::cout << "Frequency: " << params.frequency << " Hz\n";
+        float v = getFloatArg(args, "--frequency", params.frequency);
+        params.frequency = v;
+        params.band[0].frequency = v;
+        std::cout << "Frequency: " << v << " Hz\n";
     }
 
     if (args.count("--gain")) {
-        params.gain = getFloatArg(args, "--gain", params.gain);
-        dsp.setParams(params);
-        std::cout << "Gain: " << params.gain << " dB\n";
+        float v = getFloatArg(args, "--gain", params.gain);
+        params.gain = v;
+        params.band[0].gain = v;
+        std::cout << "Gain: " << v << " dB\n";
     }
 
     if (args.count("--q")) {
-        params.q = getFloatArg(args, "--q", params.q);
-        dsp.setParams(params);
-        std::cout << "Q: " << params.q << "\n";
+        float v = getFloatArg(args, "--q", params.q);
+        params.q = v;
+        params.band[0].q = v;
+        std::cout << "Q: " << v << "\n";
     }
 
     if (args.count("--threshold")) {
-        params.threshold = getFloatArg(args, "--threshold", params.threshold);
-        dsp.setParams(params);
-        std::cout << "Threshold: " << params.threshold << " dB\n";
-    }
-
-    if (args.count("--range")) {
-        params.range = getFloatArg(args, "--range", params.range);
-        dsp.setParams(params);
-        std::cout << "Range: " << params.range << " dB\n";
+        float v = getFloatArg(args, "--threshold", params.threshold);
+        params.threshold = v;
+        params.band[0].threshold = v;
+        std::cout << "Threshold: " << v << " dB\n";
     }
 
     if (args.count("--attack")) {
-        params.attack = getFloatArg(args, "--attack", params.attack);
-        dsp.setParams(params);
-        std::cout << "Attack: " << params.attack << " ms\n";
+        float v = getFloatArg(args, "--attack", params.attack);
+        params.attack = v;
+        params.band[0].attack = v;
+        std::cout << "Attack: " << v << " ms\n";
     }
 
     if (args.count("--release")) {
-        params.release = getFloatArg(args, "--release", params.release);
-        dsp.setParams(params);
-        std::cout << "Release: " << params.release << " ms\n";
+        float v = getFloatArg(args, "--release", params.release);
+        params.release = v;
+        params.band[0].release = v;
+        std::cout << "Release: " << v << " ms\n";
     }
 
     if (args.count("--mix")) {
         params.mix = getFloatArg(args, "--mix", params.mix);
-        dsp.setParams(params);
         std::cout << "Mix: " << params.mix << "%\n";
     }
 
@@ -253,21 +397,24 @@ int main(int argc, char** argv) {
         std::cout << "Bypass: " << (params.enabled ? "off" : "on") << "\n";
     }
 
-    //============================================================================
+    // Apply all params
+    dsp.setParams(params);
+
+    //==========================================================================
     // Process audio
-    //============================================================================
+    //==========================================================================
     std::cout << "Processing...\n";
     dsp.process(left.data(), right.data(), static_cast<int>(totalFrames));
 
-    //============================================================================
+    //==========================================================================
     // Write output file using dr_wav
-    //============================================================================
+    //==========================================================================
     drwav_data_format format;
     format.container = drwav_container_riff;
     format.format = DR_WAVE_FORMAT_IEEE_FLOAT;
     format.channels = channels >= 2 ? 2 : 1;
     format.sampleRate = sampleRate;
-    format.bitsPerSample = 32;  // 32-bit float
+    format.bitsPerSample = 32;
 
     drwav wav;
     if (!drwav_init_file_write(&wav, outFile.c_str(), &format, NULL)) {
@@ -275,7 +422,6 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    // Interleave output
     std::vector<float> output(totalFrames * format.channels);
     if (format.channels >= 2) {
         for (drwav_uint64 i = 0; i < totalFrames; ++i) {
