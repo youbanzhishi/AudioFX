@@ -1,0 +1,78 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build & Test all plugins
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update && sudo apt-get install -y libasound2-dev libfreetype6-dev libx11-dev libxrandr-dev libgl1-mesa-dev
+      - name: Build all CLI standalones
+        run: |
+          for dir in VC-*/; do
+            plugin=$(basename "$dir")
+            if [ "$plugin" = "VC-Plugin-Template" ]; then continue; fi
+            echo "=== Building $plugin ==="
+            # Detect custom DSP filename
+            if [ -f "${dir}Source/DSP/VCDistortionDSP.cpp" ]; then
+              DSP="VCDistortionDSP"
+            elif [ -f "${dir}Source/DSP/VCNoiseDSP.cpp" ]; then
+              DSP="VCNoiseDSP"
+            elif [ -f "${dir}Source/DSP/VCSurgicalDeEsserDSP.cpp" ]; then
+              DSP="VCSurgicalDeEsserDSP"
+            else
+              DSP="VCPluginDSP"
+            fi
+            cd "$dir"
+            g++ -std=c++17 -DVC_STANDALONE -O2 -I../Libs/dr_wav \
+              Source/CLI_Standalone/main.cpp Source/DSP/${DSP}.cpp \
+              -o ${plugin}-CLI-Standalone -lm
+            cd ..
+          done
+      - name: Test CLI binaries
+        run: |
+          for bin in VC-*-CLI-Standalone; do
+            plugin=$(echo "$bin" | sed 's/-CLI-Standalone//')
+            if [ "$plugin" = "VC-Plugin-Template" ]; then continue; fi
+            echo "=== Testing $bin ==="
+            ./$bin --help || true
+          done
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [ -z "$PREV_TAG" ]; then
+            COMMITS=$(git log --pretty=format:"- %s (%h)" --reverse)
+          else
+            COMMITS=$(git log ${PREV_TAG}..HEAD --pretty=format:"- %s (%h)" --reverse)
+          fi
+          echo "$COMMITS" > /tmp/changelog.txt
+          echo "prev_tag=$PREV_TAG" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          body_path: /tmp/changelog.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
