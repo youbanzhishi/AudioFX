@@ -28,26 +28,28 @@ struct Preset {
 };
 
 static const Preset presets[] = {
-    {"bypass", {0.0f, 100.0f, false}},
-    {"gain-3db", {3.0f, 100.0f, true}},
-    {"gain-6db", {6.0f, 100.0f, true}},
-    {"half-mix", {0.0f, 50.0f, true}},
+    {"bypass", {250.0f, 30.0f, 50.0f, false}},
+    {"slapback", {80.0f, 10.0f, 40.0f, true}},
+    {"short", {150.0f, 25.0f, 50.0f, true}},
+    {"medium", {350.0f, 40.0f, 45.0f, true}},
+    {"long", {700.0f, 55.0f, 40.0f, true}},
 };
 
 //==============================================================================
 // Help text
 //==============================================================================
 void printHelp(const char* progName) {
-    std::cout << "VC-Plugin Standalone CLI (No JUCE)\n\n";
+    std::cout << "VC-Delay Standalone CLI - Stereo Delay (No JUCE)\n\n";
     std::cout << "Usage: " << progName << " <input.wav> <output.wav> [options]\n\n";
     std::cout << "Options:\n";
     std::cout << "  --help, -h           Show this help\n";
-    std::cout << "  --preset <name>      Preset (bypass, gain-3db, gain-6db, half-mix)\n";
-    std::cout << "  --gain <dB>          Gain in dB (default: 0)\n";
+    std::cout << "  --preset <name>      Preset (bypass, slapback, short, medium, long)\n";
+    std::cout << "  --time <ms>          Delay time in ms (default: 250)\n";
+    std::cout << "  --feedback <%>       Feedback percentage (default: 30)\n";
     std::cout << "  --mix <0-100>        Dry/Wet mix percentage (default: 100)\n";
     std::cout << "  --bypass <0|1>       Bypass processing (default: 0)\n\n";
     std::cout << "Examples:\n";
-    std::cout << "  " << progName << " in.wav out.wav --preset gain-3db\n";
+    std::cout << "  " << progName << " in.wav out.wav --preset medium\n";
     std::cout << "  " << progName << " in.wav out.wav --time 250 --feedback 30\n";
 }
 
@@ -117,7 +119,7 @@ int main(int argc, char** argv) {
     std::string inFile = files[0];
     std::string outFile = files[1];
 
-    std::cout << "VC-Plugin Standalone CLI (No JUCE)\n";
+    std::cout << "VC-Delay Standalone CLI - Stereo Delay (No JUCE)\n";
     std::cout << "Input: " << inFile << "\n";
     std::cout << "Output: " << outFile << "\n";
 
