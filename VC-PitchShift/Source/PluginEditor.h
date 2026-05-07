@@ -5,28 +5,42 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 //==============================================================================
-// Plugin Editor
+// VC-PitchShift Plugin Editor
 //==============================================================================
-class VC_PitchShiftEditor : public juce::AudioProcessorEditor
+class VCPitchShiftEditor : public juce::AudioProcessorEditor
 {
 public:
-    VC_PitchShiftEditor(VC_PitchShiftProcessor&);
-    ~VC_PitchShiftEditor() override;
+    VCPitchShiftEditor(VCPitchShiftProcessor&);
+    ~VCPitchShiftEditor() override;
 
-    //==========================================================================
+    //============================================================================
     // Painting and Layout
-    //==========================================================================
+    //============================================================================
     void paint(juce::Graphics&) override;
     void resized() override;
 
 private:
-    //==========================================================================
-    // Processor reference
-    //==========================================================================
-    VC_PitchShiftProcessor& processor;
+    //============================================================================
+    // UI Controls
+    //============================================================================
+    juce::Slider semitonesSlider;
+    juce::Label  semitonesLabel;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> semitonesAttachment;
 
-    //==========================================================================
+    juce::Slider centsSlider;
+    juce::Label  centsLabel;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> centsAttachment;
+
+    juce::ToggleButton formantButton;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> formantAttachment;
+
+    //============================================================================
+    // Processor reference
+    //============================================================================
+    VCPitchShiftProcessor& processor;
+
+    //============================================================================
     // Non-copyable
-    //==========================================================================
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(VC_PitchShiftEditor)
+    //============================================================================
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(VCPitchShiftEditor)
 };

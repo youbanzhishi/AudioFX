@@ -1,8 +1,8 @@
 #pragma once
 
 //==============================================================================
-// JUCE Audio Processor Header
-// VC-PitchShift - Noise PitchShift / Downward Expander
+// VC-PitchShift JUCE Audio Processor Header
+// Phase Vocoder Pitch Shifting VST3 Plugin
 //==============================================================================
 
 #include <juce_audio_processors/juce_audio_processors.h>
@@ -17,12 +17,9 @@
 namespace ParameterIDs
 {
     static const juce::String bypass    = "bypass";
-    static const juce::String threshold = "threshold";
-    static const juce::String ratio     = "ratio";
-    static const juce::String attack    = "attack";
-    static const juce::String hold      = "hold";
-    static const juce::String release   = "release";
-    static const juce::String range     = "range";
+    static const juce::String semitones = "semitones";
+    static const juce::String cents     = "cents";
+    static const juce::String formant   = "formant";
 }
 
 //==============================================================================
@@ -36,19 +33,19 @@ namespace Config
 //==============================================================================
 // Main Audio Processor Class
 //==============================================================================
-class VC_PitchShiftProcessor : public juce::AudioProcessor,
-                         public juce::AudioProcessorValueTreeState::Listener
+class VCPitchShiftProcessor : public juce::AudioProcessor,
+                               public juce::AudioProcessorValueTreeState::Listener
 {
 public:
-    //==========================================================================
+    //============================================================================
     // Construction / Destruction
-    //==========================================================================
-    VC_PitchShiftProcessor();
-    ~VC_PitchShiftProcessor() override;
+    //============================================================================
+    VCPitchShiftProcessor();
+    ~VCPitchShiftProcessor() override;
 
-    //==========================================================================
+    //============================================================================
     // JUCE AudioProcessor Interface
-    //==========================================================================
+    //============================================================================
     void prepareToPlay(double sampleRate, int samplesPerBlock) override;
     void releaseResources() override;
 
@@ -57,79 +54,79 @@ public:
     void processBlock(juce::AudioBuffer<float>& buffer,
                       juce::MidiBuffer& midiBuffer) override;
 
-    //==========================================================================
+    //============================================================================
     // Editor
-    //==========================================================================
+    //============================================================================
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
 
-    //==========================================================================
+    //============================================================================
     // Plugin Information
-    //==========================================================================
+    //============================================================================
     const juce::String getName() const override { return "VC-PitchShift"; }
     bool acceptsMidi() const override { return false; }
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
-    double getTailLengthSeconds() const override { return 0.0; }
+    double getTailLengthSeconds() const override { return 0.1; }
 
-    //==========================================================================
+    //============================================================================
     // Program (Preset) Support
-    //==========================================================================
+    //============================================================================
     int getNumPrograms() override { return 1; }
     int getCurrentProgram() override { return 0; }
     void setCurrentProgram(int) override {}
     const juce::String getProgramName(int) override { return {}; }
     void changeProgramName(int, const juce::String&) override {}
 
-    //==========================================================================
+    //============================================================================
     // State Save/Restore
-    //==========================================================================
+    //============================================================================
     void getStateInformation(juce::MemoryBlock& destData) override;
     void setStateInformation(const void* data, int sizeInBytes) override;
 
-    //==========================================================================
+    //============================================================================
     // Parameter Listener Callback
-    //==========================================================================
+    //============================================================================
     void parameterChanged(const juce::String& parameterID, float newValue) override;
 
-    //==========================================================================
+    //============================================================================
     // Accessor for APVTS
-    //==========================================================================
+    //============================================================================
     juce::AudioProcessorValueTreeState& getAPVTS() { return mAPVTS; }
 
-    //==========================================================================
+    //============================================================================
     // DSP Instance Access
-    //==========================================================================
+    //============================================================================
     VCPluginDSP& getDSP() { return mDSP; }
 
 private:
-    //==========================================================================
+    //============================================================================
     // Create Parameter Layout
-    //==========================================================================
+    //============================================================================
     juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 
-    //==========================================================================
+    //============================================================================
     // DSP Processing Specification
-    //==========================================================================
+    //============================================================================
     juce::dsp::ProcessSpec mProcessSpec;
 
-    //==========================================================================
+    //============================================================================
     // DSP Processing Class
-    //==========================================================================
+    //============================================================================
     VCPluginDSP mDSP;
 
-    //==========================================================================
+    //============================================================================
     // Processing State
-    //==========================================================================
+    //============================================================================
     bool mBypass = false;
 
-    //==========================================================================
+    //============================================================================
     // AudioProcessorValueTreeState
-    //==========================================================================
+    //============================================================================
     juce::AudioProcessorValueTreeState mAPVTS;
 
-    //==========================================================================
+    //============================================================================
     // Non-copyable
-    //==========================================================================
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(VC_PitchShiftProcessor)
+    //============================================================================
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(VCPitchShiftProcessor)
 };

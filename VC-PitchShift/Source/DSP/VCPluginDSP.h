@@ -47,9 +47,9 @@ namespace VCStandalone {
 //==============================================================================
 // Phase Vocoder constants
 //==============================================================================
-constexpr int PV_FFT_SIZE     = 2048;     // FFT window size
-constexpr int PV_HOP_SIZE     = 512;      // Hop size (75% overlap)
-constexpr int PV_FFT_SIZE_2   = PV_FFT_SIZE / 2 + 1;  // Number of unique frequency bins
+constexpr int PV_FFT_SIZE   = 2048;   // FFT window size
+constexpr int PV_HOP_SIZE   = 512;    // Hop size (75% overlap with Hann)
+constexpr int PV_FFT_SIZE_2 = PV_FFT_SIZE / 2 + 1;  // Unique frequency bins
 
 //==============================================================================
 // Main DSP Class
@@ -125,16 +125,16 @@ private:
     void processInternal(float* left, float* right, int numSamples);
 
     // Phase vocoder processing for one channel
-    void processChannelPV(float* input, float* output, int numSamples,
-                          float* analysisBuf, float* synthesisBuf,
-                          float* prevPhase, float* synthPhase,
-                          float* windowBuf);
+    void processChannelPV(float* input, float* output, int numSamples, int channel);
 
     // Standalone FFT (Cooley-Tukey radix-2)
     void fft(float* real, float* imag, int N, bool inverse);
 
     // Compute Hann window
     void computeHannWindow(float* window, int size);
+
+    // Update pitch ratio from params
+    void updatePitchRatio();
 
     //==========================================================================
     // Member variables
@@ -149,20 +149,15 @@ private:
 
     // Phase vocoder state per channel
     struct PVState {
-        std::vector<float> analysisBuffer;   // Ring buffer for input
-        std::vector<float> synthesisBuffer;  // Ring buffer for output
         std::vector<float> prevPhase;        // Previous analysis phase [PV_FFT_SIZE_2]
         std::vector<float> synthPhase;       // Synthesis phase accumulator [PV_FFT_SIZE_2]
-        int writePos = 0;                    // Write position in analysis buffer
-        int readPos = 0;                     // Read position in synthesis buffer
-        int samplesInAnalysis = 0;           // Number of samples available in analysis buffer
     };
     PVState mPVState[2];  // [channel]
 
     // Hann window
     std::vector<float> mHannWindow;
 
-    // FFT workspace
+    // FFT workspace (per-call, non-shared between channels)
     std::vector<float> mFFTReal;
     std::vector<float> mFFTImag;
 
@@ -172,10 +167,6 @@ private:
     // Internal buffer for AudioBlock conversion
     std::vector<float> mInternalBuffer;
     std::vector<float*> mInternalPtrs;
-
-    // Output accumulation buffer (larger than block, for overlap-add)
-    std::vector<float> mOutputAccum[2];  // [channel]
-    int mAccumWritePos = 0;
 
     //==========================================================================
     // Non-copyable

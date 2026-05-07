@@ -5,28 +5,46 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 //==============================================================================
-// Plugin Editor
+// VC-Stereo Plugin Editor
 //==============================================================================
-class VC_StereoEditor : public juce::AudioProcessorEditor
+class VCStereoEditor : public juce::AudioProcessorEditor
 {
 public:
-    VC_StereoEditor(VC_StereoProcessor&);
-    ~VC_StereoEditor() override;
+    VCStereoEditor(VCStereoProcessor&);
+    ~VCStereoEditor() override;
 
-    //==========================================================================
+    //============================================================================
     // Painting and Layout
-    //==========================================================================
+    //============================================================================
     void paint(juce::Graphics&) override;
     void resized() override;
 
 private:
-    //==========================================================================
-    // Processor reference
-    //==========================================================================
-    VC_StereoProcessor& processor;
+    //============================================================================
+    // UI Controls
+    //============================================================================
+    juce::Slider widthSlider;
+    juce::Label  widthLabel;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> widthAttachment;
 
-    //==========================================================================
+    juce::Slider panSlider;
+    juce::Label  panLabel;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> panAttachment;
+
+    juce::ToggleButton monoBassButton;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> monoBassAttachment;
+
+    juce::Slider bassFreqSlider;
+    juce::Label  bassFreqLabel;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> bassFreqAttachment;
+
+    //============================================================================
+    // Processor reference
+    //============================================================================
+    VCStereoProcessor& processor;
+
+    //============================================================================
     // Non-copyable
-    //==========================================================================
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(VC_StereoEditor)
+    //============================================================================
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(VCStereoEditor)
 };

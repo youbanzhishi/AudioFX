@@ -6,23 +6,21 @@ using namespace juce;
 //==============================================================================
 // Construction / Destruction
 //==============================================================================
-VC_PitchShiftProcessor::VC_PitchShiftProcessor()
+VCPitchShiftProcessor::VCPitchShiftProcessor()
     : AudioProcessor(BusesProperties()
                      .withInput("Input", AudioChannelSet::stereo())
                      .withOutput("Output", AudioChannelSet::stereo()))
-    , mAPVTS(*this, nullptr, Identifier("VC-PitchShiftParameters"),
+    , mAPVTS(*this, nullptr, Identifier("VCPitchShiftParameters"),
              createParameterLayout())
 {
+    // Register parameter listeners
     mAPVTS.addParameterListener(ParameterIDs::bypass, this);
-    mAPVTS.addParameterListener(ParameterIDs::threshold, this);
-    mAPVTS.addParameterListener(ParameterIDs::ratio, this);
-    mAPVTS.addParameterListener(ParameterIDs::attack, this);
-    mAPVTS.addParameterListener(ParameterIDs::hold, this);
-    mAPVTS.addParameterListener(ParameterIDs::release, this);
-    mAPVTS.addParameterListener(ParameterIDs::range, this);
+    mAPVTS.addParameterListener(ParameterIDs::semitones, this);
+    mAPVTS.addParameterListener(ParameterIDs::cents, this);
+    mAPVTS.addParameterListener(ParameterIDs::formant, this);
 }
 
-VC_PitchShiftProcessor::~VC_PitchShiftProcessor()
+VCPitchShiftProcessor::~VCPitchShiftProcessor()
 {
 }
 
@@ -30,36 +28,26 @@ VC_PitchShiftProcessor::~VC_PitchShiftProcessor()
 // Parameter Layout
 //==============================================================================
 AudioProcessorValueTreeState::ParameterLayout
-VC_PitchShiftProcessor::createParameterLayout()
+VCPitchShiftProcessor::createParameterLayout()
 {
     std::vector<std::unique_ptr<RangedAudioParameter>> params;
 
+    // Bypass
     params.push_back(std::make_unique<AudioParameterBool>(
         ParameterIDs::bypass, "Bypass", false));
 
-    params.push_back(std::make_unique<AudioParameterFloat>(
-        ParameterIDs::threshold, "Threshold",
-        NormalisableRange<float>(-80.0f, 0.0f, 0.1f), -40.0f, "dB"));
+    // Semitones (-12 ~ +12)
+    params.push_back(std::make_unique<AudioParameterInt>(
+        ParameterIDs::semitones, "Semitones", -12, 12, 0));
 
+    // Cents (-100 ~ +100)
     params.push_back(std::make_unique<AudioParameterFloat>(
-        ParameterIDs::ratio, "Ratio",
-        NormalisableRange<float>(1.0f, 20.0f, 0.1f), 10.0f, ":1"));
+        ParameterIDs::cents, "Cents",
+        NormalisableRange<float>(-100.0f, 100.0f), 0.0f, "ct"));
 
-    params.push_back(std::make_unique<AudioParameterFloat>(
-        ParameterIDs::attack, "Attack",
-        NormalisableRange<float>(0.1f, 50.0f, 0.1f), 1.0f, "ms"));
-
-    params.push_back(std::make_unique<AudioParameterFloat>(
-        ParameterIDs::hold, "Hold",
-        NormalisableRange<float>(0.0f, 500.0f, 1.0f), 50.0f, "ms"));
-
-    params.push_back(std::make_unique<AudioParameterFloat>(
-        ParameterIDs::release, "Release",
-        NormalisableRange<float>(10.0f, 2000.0f, 1.0f), 100.0f, "ms"));
-
-    params.push_back(std::make_unique<AudioParameterFloat>(
-        ParameterIDs::range, "Range",
-        NormalisableRange<float>(-80.0f, 0.0f, 0.1f), -80.0f, "dB"));
+    // Formant preservation
+    params.push_back(std::make_unique<AudioParameterBool>(
+        ParameterIDs::formant, "Formant", false));
 
     return {params.begin(), params.end()};
 }
@@ -67,25 +55,24 @@ VC_PitchShiftProcessor::createParameterLayout()
 //==============================================================================
 // Prepare to Play
 //==============================================================================
-void VC_PitchShiftProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
+void VCPitchShiftProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
     mProcessSpec.sampleRate = sampleRate;
-    mProcessSpec.maximumBlockSize = static_cast<uint32_t>(samplesPerBlock);
+    mProcessSpec.maximumBlockSize = static_cast<uint32>(samplesPerBlock);
     mProcessSpec.numChannels = getMainBusNumOutputChannels();
 
     mDSP.prepare(sampleRate, samplesPerBlock);
 }
 
-void VC_PitchShiftProcessor::releaseResources()
+void VCPitchShiftProcessor::releaseResources()
 {
     mDSP.reset();
 }
 
 //==============================================================================
 // Bus Layout Support Check
-// IMPORTANT: In JUCE 8, layouts.inputBuses[] returns by value (not reference)
 //==============================================================================
-bool VC_PitchShiftProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
+bool VCPitchShiftProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
 {
     const auto inputLayout = layouts.inputBuses[0];
     const auto outputLayout = layouts.outputBuses[0];
@@ -97,47 +84,40 @@ bool VC_PitchShiftProcessor::isBusesLayoutSupported(const BusesLayout& layouts) 
 //==============================================================================
 // Process Audio Block
 //==============================================================================
-void VC_PitchShiftProcessor::processBlock(AudioBuffer<float>& buffer,
-                                     MidiBuffer&)
+void VCPitchShiftProcessor::processBlock(AudioBuffer<float>& buffer,
+                                          MidiBuffer&)
 {
     if (mBypass)
         return;
 
+    // Get audio data pointers
     int numSamples = buffer.getNumSamples();
     float* leftChannel = buffer.getWritePointer(0);
     float* rightChannel = buffer.getWritePointer(1);
 
+    // Process through DSP
     mDSP.process(leftChannel, rightChannel, numSamples);
 }
 
 //==============================================================================
 // Parameter Changed Callback
 //==============================================================================
-void VC_PitchShiftProcessor::parameterChanged(const String& parameterID,
-                                         float newValue)
+void VCPitchShiftProcessor::parameterChanged(const String& parameterID,
+                                              float newValue)
 {
     VCPluginDSP::Params p = mDSP.getParams();
 
     if (parameterID == ParameterIDs::bypass) {
         mBypass = newValue > 0.5f;
         mDSP.setEnabled(!mBypass);
-    } else if (parameterID == ParameterIDs::threshold) {
-        p.threshold = newValue;
+    } else if (parameterID == ParameterIDs::semitones) {
+        p.semitones = static_cast<int>(newValue);
         mDSP.setParams(p);
-    } else if (parameterID == ParameterIDs::ratio) {
-        p.ratio = newValue;
+    } else if (parameterID == ParameterIDs::cents) {
+        p.cents = newValue;
         mDSP.setParams(p);
-    } else if (parameterID == ParameterIDs::attack) {
-        p.attack = newValue;
-        mDSP.setParams(p);
-    } else if (parameterID == ParameterIDs::hold) {
-        p.hold = newValue;
-        mDSP.setParams(p);
-    } else if (parameterID == ParameterIDs::release) {
-        p.release = newValue;
-        mDSP.setParams(p);
-    } else if (parameterID == ParameterIDs::range) {
-        p.range = newValue;
+    } else if (parameterID == ParameterIDs::formant) {
+        p.formant = newValue > 0.5f;
         mDSP.setParams(p);
     }
 }
@@ -145,7 +125,7 @@ void VC_PitchShiftProcessor::parameterChanged(const String& parameterID,
 //==============================================================================
 // State Information
 //==============================================================================
-void VC_PitchShiftProcessor::getStateInformation(MemoryBlock& destData)
+void VCPitchShiftProcessor::getStateInformation(MemoryBlock& destData)
 {
     auto state = mAPVTS.copyState();
     std::unique_ptr<XmlElement> xml(state.createXml());
@@ -155,8 +135,8 @@ void VC_PitchShiftProcessor::getStateInformation(MemoryBlock& destData)
     }
 }
 
-void VC_PitchShiftProcessor::setStateInformation(const void* data,
-                                            int sizeInBytes)
+void VCPitchShiftProcessor::setStateInformation(const void* data,
+                                                  int sizeInBytes)
 {
     auto xmlState = parseXML(String(static_cast<const char*>(data), sizeInBytes));
     if (xmlState.get() != nullptr)
@@ -166,9 +146,9 @@ void VC_PitchShiftProcessor::setStateInformation(const void* data,
 //==============================================================================
 // Create Editor
 //==============================================================================
-AudioProcessorEditor* VC_PitchShiftProcessor::createEditor()
+AudioProcessorEditor* VCPitchShiftProcessor::createEditor()
 {
-    return new VC_PitchShiftEditor(*this);
+    return new VCPitchShiftEditor(*this);
 }
 
 //==============================================================================
@@ -176,5 +156,5 @@ AudioProcessorEditor* VC_PitchShiftProcessor::createEditor()
 //==============================================================================
 AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
-    return new VC_PitchShiftProcessor();
+    return new VCPitchShiftProcessor();
 }

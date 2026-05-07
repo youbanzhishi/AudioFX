@@ -1,11 +1,11 @@
-# VC-Plugin-Template - VST3 Audio Plugin Template
+# VC-PitchShift - Phase Vocoder Pitch Shifting VST3 Plugin
 # Based on JUCE 8 + CMake
 # Supports: JUCE CLI + Standalone CLI + VST3 Plugin
 
 cmake_minimum_required(VERSION 3.22)
 
 #==============================================================================
-# Plugin Configuration - Replace these placeholders
+# Plugin Configuration
 #==============================================================================
 set(PLUGIN_NAME "VC-PitchShift")
 set(PLUGIN_CODE "VCPS")
@@ -29,7 +29,6 @@ set(DSP_SOURCES
 
 #==============================================================================
 # Target 1: JUCE CLI
-# Command-line tool using JUCE for WAV I/O
 #==============================================================================
 add_executable(${PLUGIN_NAME}-CLI Source/CLI/main.cpp ${DSP_SOURCES})
 
@@ -57,10 +56,7 @@ set_target_properties(${PLUGIN_NAME}-CLI PROPERTIES
 )
 
 #==============================================================================
-# Target 2: Standalone CLI
-# Zero-dependency command-line tool using dr_wav
-# NOTE: dr_wav include path is ${CMAKE_SOURCE_DIR}/../Libs/dr_wav
-#       because CMAKE_SOURCE_DIR points to the plugin subdirectory
+# Target 2: Standalone CLI (dr_wav, zero dependency)
 #==============================================================================
 add_executable(${PLUGIN_NAME}-CLI-Standalone Source/CLI_Standalone/main.cpp ${DSP_SOURCES})
 
@@ -72,7 +68,6 @@ target_compile_definitions(${PLUGIN_NAME}-CLI-Standalone PRIVATE
     VC_STANDALONE
 )
 
-# No external dependencies - pure C++ with dr_wav headers
 target_link_libraries(${PLUGIN_NAME}-CLI-Standalone PRIVATE)
 
 set_target_properties(${PLUGIN_NAME}-CLI-Standalone PROPERTIES

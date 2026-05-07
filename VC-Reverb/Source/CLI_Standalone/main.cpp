@@ -1,6 +1,6 @@
 // VC-Reverb Standalone CLI - No JUCE Dependency
 // Uses dr_wav for WAV I/O
-// Schroeder Algorithmic Reverb
+// Gen 2 FDN (Feedback Delay Network) Reverb
 
 //==============================================================================
 // MUST define VC_STANDALONE before including DSP header
@@ -21,7 +21,7 @@
 #include "../DSP/VCPluginDSP.h"
 
 //==============================================================================
-// VC-Reverb presets
+// VC-Reverb presets (Gen 2 FDN)
 //==============================================================================
 struct Preset {
     const char* name;
@@ -29,26 +29,28 @@ struct Preset {
 };
 
 static const Preset presets[] = {
-    {"bypass", {50.0f, 50.0f, 50.0f, 20.0f, 30.0f, 8000.0f, 200.0f, false}},
-    {"small-room", {30.0f, 40.0f, 60.0f, 10.0f, 25.0f, 8000.0f, 200.0f, true}},
-    {"large-hall", {80.0f, 70.0f, 40.0f, 30.0f, 35.0f, 6000.0f, 150.0f, true}},
-    {"plate", {60.0f, 55.0f, 30.0f, 5.0f, 40.0f, 10000.0f, 100.0f, true}},
-    {"ambient", {90.0f, 80.0f, 70.0f, 50.0f, 20.0f, 5000.0f, 250.0f, true}},
+    {"bypass",      {50.0f, 50.0f, 50.0f, 20.0f, 30.0f, 8000.0f, 200.0f, false}},
+    {"small-room",  {30.0f, 40.0f, 60.0f, 10.0f, 25.0f, 8000.0f, 200.0f, true}},
+    {"large-hall",  {80.0f, 70.0f, 40.0f, 30.0f, 35.0f, 6000.0f, 150.0f, true}},
+    {"plate",       {60.0f, 55.0f, 30.0f,  5.0f, 40.0f, 10000.0f, 100.0f, true}},
+    {"ambient",     {90.0f, 80.0f, 70.0f, 50.0f, 20.0f, 5000.0f, 250.0f, true}},
+    {"cathedral",   {100.0f, 90.0f, 50.0f, 60.0f, 30.0f, 4000.0f, 120.0f, true}},
 };
 
 //==============================================================================
 // Help text
 //==============================================================================
 void printHelp(const char* progName) {
-    std::cout << "VC-Reverb Standalone CLI (Schroeder Algorithmic Reverb)\n\n";
+    std::cout << "VC-Reverb Standalone CLI (Gen 2 FDN Reverb)\n\n";
+    std::cout << "Architecture: 8-delay-line FDN + Householder matrix + early reflections\n\n";
     std::cout << "Usage: " << progName << " <input.wav> <output.wav> [options]\n\n";
     std::cout << "Options:\n";
     std::cout << "  --help, -h           Show this help\n";
-    std::cout << "  --preset <name>      Preset (bypass, small-room, large-hall, plate, ambient)\n";
-    std::cout << "  --room <0-100>       Room size percentage (default: 50)\n";
-    std::cout << "  --decay <0-100>      Decay time percentage (default: 50)\n";
-    std::cout << "  --damping <0-100>    High frequency damping percentage (default: 50)\n";
-    std::cout << "  --predelay <0-100>   Pre-delay in ms (default: 20)\n";
+    std::cout << "  --preset <name>      Preset (bypass, small-room, large-hall, plate, ambient, cathedral)\n";
+    std::cout << "  --room <1-100>       Room size percentage (default: 50)\n";
+    std::cout << "  --decay <1-100>      Decay time percentage (default: 50)\n";
+    std::cout << "  --damping <1-100>    High frequency damping percentage (default: 50)\n";
+    std::cout << "  --predelay <0-200>   Pre-delay in ms (default: 20)\n";
     std::cout << "  --mix <0-100>        Dry/Wet mix percentage (default: 30)\n";
     std::cout << "  --wetlpf <1000-16000> Wet signal high-cut freq Hz (default: 8000)\n";
     std::cout << "  --wethpf <20-500>     Wet signal low-cut freq Hz (default: 200)\n";
@@ -125,13 +127,13 @@ int main(int argc, char** argv) {
     std::string inFile = files[0];
     std::string outFile = files[1];
 
-    std::cout << "VC-Reverb Standalone CLI (Schroeder Algorithmic Reverb)\n";
+    std::cout << "VC-Reverb Standalone CLI (Gen 2 FDN Reverb)\n";
     std::cout << "Input: " << inFile << "\n";
     std::cout << "Output: " << outFile << "\n";
 
-    //============================================================================
+    //==========================================================================
     // Read audio file using dr_wav
-    //============================================================================
+    //==========================================================================
     unsigned int channels = 0;
     unsigned int sampleRate = 0;
     drwav_uint64 totalFrames = 0;
@@ -165,9 +167,9 @@ int main(int argc, char** argv) {
 
     drwav_free(pSampleData, NULL);
 
-    //============================================================================
+    //==========================================================================
     // Initialize DSP
-    //============================================================================
+    //==========================================================================
     VCPluginDSP dsp;
     dsp.prepare(sampleRate, 4096);
 
@@ -213,6 +215,8 @@ int main(int argc, char** argv) {
         params.mix = std::stof(args["--mix"]);
         dsp.setParams(params);
         std::cout << "Mix: " << params.mix << "%\n";
+    }
+
     if (args.count("--wetlpf")) {
         params.wetLPF = std::stof(args["--wetlpf"]);
         dsp.setParams(params);
@@ -224,7 +228,6 @@ int main(int argc, char** argv) {
         dsp.setParams(params);
         std::cout << "Wet HPF (low-cut): " << params.wetHPF << " Hz\n";
     }
-    }
 
     if (args.count("--bypass")) {
         params.enabled = (args["--bypass"] == "1");
@@ -232,15 +235,15 @@ int main(int argc, char** argv) {
         std::cout << "Bypass: " << (params.enabled ? "off" : "on") << "\n";
     }
 
-    //============================================================================
+    //==========================================================================
     // Process audio
-    //============================================================================
-    std::cout << "Processing...\n";
+    //==========================================================================
+    std::cout << "Processing (FDN 8-delay-line + Householder + early reflections)...\n";
     dsp.process(left.data(), right.data(), static_cast<int>(totalFrames));
 
-    //============================================================================
+    //==========================================================================
     // Write output file using dr_wav
-    //============================================================================
+    //==========================================================================
     drwav_data_format format;
     format.container = drwav_container_riff;
     format.format = DR_WAVE_FORMAT_IEEE_FLOAT;
