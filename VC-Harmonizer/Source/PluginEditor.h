@@ -8,11 +8,11 @@
 // Minimal Plugin Editor
 // TODO: Expand with your plugin's UI controls
 //==============================================================================
-class __PLUGIN_NAME__Editor : public juce::AudioProcessorEditor
+class VC-HarmonizerEditor : public juce::AudioProcessorEditor
 {
 public:
-    __PLUGIN_NAME__Editor(__PLUGIN_NAME__Processor&);
-    ~__PLUGIN_NAME__Editor() override;
+    VC-HarmonizerEditor(VC-HarmonizerProcessor&);
+    ~VC-HarmonizerEditor() override;
 
     //============================================================================
     // Painting and Layout
@@ -32,10 +32,10 @@ private:
     //============================================================================
     // Processor reference
     //============================================================================
-    __PLUGIN_NAME__Processor& processor;
+    VC-HarmonizerProcessor& processor;
 
     //============================================================================
     // Non-copyable
     //============================================================================
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(__PLUGIN_NAME__Editor)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(VC-HarmonizerEditor)
 };

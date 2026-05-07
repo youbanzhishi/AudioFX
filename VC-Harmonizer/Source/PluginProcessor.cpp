@@ -6,11 +6,11 @@ using namespace juce;
 //==============================================================================
 // Construction / Destruction
 //==============================================================================
-__PLUGIN_NAME__Processor::__PLUGIN_NAME__Processor()
+VC-HarmonizerProcessor::VC-HarmonizerProcessor()
     : AudioProcessor(BusesProperties()
                      .withInput("Input", AudioChannelSet::stereo())
                      .withOutput("Output", AudioChannelSet::stereo()))
-    , mAPVTS(*this, nullptr, Identifier("__PLUGIN_NAME__Parameters"),
+    , mAPVTS(*this, nullptr, Identifier("VC-HarmonizerParameters"),
              createParameterLayout())
 {
     // Register parameter listeners
@@ -19,7 +19,7 @@ __PLUGIN_NAME__Processor::__PLUGIN_NAME__Processor()
     mAPVTS.addParameterListener(ParameterIDs::mix, this);
 }
 
-__PLUGIN_NAME__Processor::~__PLUGIN_NAME__Processor()
+VC-HarmonizerProcessor::~VC-HarmonizerProcessor()
 {
 }
 
@@ -27,7 +27,7 @@ __PLUGIN_NAME__Processor::~__PLUGIN_NAME__Processor()
 // Parameter Layout
 //==============================================================================
 AudioProcessorValueTreeState::ParameterLayout
-__PLUGIN_NAME__Processor::createParameterLayout()
+VC-HarmonizerProcessor::createParameterLayout()
 {
     std::vector<std::unique_ptr<RangedAudioParameter>> params;
 
@@ -51,7 +51,7 @@ __PLUGIN_NAME__Processor::createParameterLayout()
 //==============================================================================
 // Prepare to Play
 //==============================================================================
-void __PLUGIN_NAME__Processor::prepareToPlay(double sampleRate, int samplesPerBlock)
+void VC-HarmonizerProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
     mProcessSpec.sampleRate = sampleRate;
     mProcessSpec.maximumBlockSize = static_cast<uint32_t>(samplesPerBlock);
@@ -60,7 +60,7 @@ void __PLUGIN_NAME__Processor::prepareToPlay(double sampleRate, int samplesPerBl
     mDSP.prepare(sampleRate, samplesPerBlock);
 }
 
-void __PLUGIN_NAME__Processor::releaseResources()
+void VC-HarmonizerProcessor::releaseResources()
 {
     mDSP.reset();
 }
@@ -70,7 +70,7 @@ void __PLUGIN_NAME__Processor::releaseResources()
 // IMPORTANT: In JUCE 8, layouts.inputBuses[] returns by value (not reference)
 // Use const auto& or auto to capture, NOT auto&
 //==============================================================================
-bool __PLUGIN_NAME__Processor::isBusesLayoutSupported(const BusesLayout& layouts) const
+bool VC-HarmonizerProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
 {
     // Only support stereo layout
     // Note: layouts.inputBuses[0] returns by value in JUCE 8
@@ -84,7 +84,7 @@ bool __PLUGIN_NAME__Processor::isBusesLayoutSupported(const BusesLayout& layouts
 //==============================================================================
 // Process Audio Block
 //==============================================================================
-void __PLUGIN_NAME__Processor::processBlock(AudioBuffer<float>& buffer,
+void VC-HarmonizerProcessor::processBlock(AudioBuffer<float>& buffer,
                                               MidiBuffer&)
 {
     if (mBypass)
@@ -102,7 +102,7 @@ void __PLUGIN_NAME__Processor::processBlock(AudioBuffer<float>& buffer,
 //==============================================================================
 // Parameter Changed Callback
 //==============================================================================
-void __PLUGIN_NAME__Processor::parameterChanged(const String& parameterID,
+void VC-HarmonizerProcessor::parameterChanged(const String& parameterID,
                                                   float newValue)
 {
     if (parameterID == ParameterIDs::bypass) {
@@ -124,7 +124,7 @@ void __PLUGIN_NAME__Processor::parameterChanged(const String& parameterID,
 //==============================================================================
 // State Information
 //==============================================================================
-void __PLUGIN_NAME__Processor::getStateInformation(MemoryBlock& destData)
+void VC-HarmonizerProcessor::getStateInformation(MemoryBlock& destData)
 {
     auto state = mAPVTS.copyState();
     std::unique_ptr<XmlElement> xml(state.createXml());
@@ -134,7 +134,7 @@ void __PLUGIN_NAME__Processor::getStateInformation(MemoryBlock& destData)
     }
 }
 
-void __PLUGIN_NAME__Processor::setStateInformation(const void* data,
+void VC-HarmonizerProcessor::setStateInformation(const void* data,
                                                       int sizeInBytes)
 {
     auto xmlState = parseXML(String(static_cast<const char*>(data), sizeInBytes));
@@ -145,9 +145,9 @@ void __PLUGIN_NAME__Processor::setStateInformation(const void* data,
 //==============================================================================
 // Create Editor
 //==============================================================================
-AudioProcessorEditor* __PLUGIN_NAME__Processor::createEditor()
+AudioProcessorEditor* VC-HarmonizerProcessor::createEditor()
 {
-    return new __PLUGIN_NAME__Editor(*this);
+    return new VC-HarmonizerEditor(*this);
 }
 
 //==============================================================================
@@ -155,5 +155,5 @@ AudioProcessorEditor* __PLUGIN_NAME__Processor::createEditor()
 //==============================================================================
 AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
-    return new __PLUGIN_NAME__Processor();
+    return new VC-HarmonizerProcessor();
 }

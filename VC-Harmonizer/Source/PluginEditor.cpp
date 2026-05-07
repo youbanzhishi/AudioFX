@@ -11,7 +11,7 @@ constexpr int PLUGIN_HEIGHT = 300;
 //==============================================================================
 // Construction / Destruction
 //==============================================================================
-__PLUGIN_NAME__Editor::__PLUGIN_NAME__Editor(__PLUGIN_NAME__Processor& p)
+VC-HarmonizerEditor::VC-HarmonizerEditor(VC-HarmonizerProcessor& p)
     : AudioProcessorEditor(&p)
     , processor(p)
 {
@@ -29,14 +29,14 @@ __PLUGIN_NAME__Editor::__PLUGIN_NAME__Editor(__PLUGIN_NAME__Processor& p)
     //============================================================================
 }
 
-__PLUGIN_NAME__Editor::~__PLUGIN_NAME__Editor()
+VC-HarmonizerEditor::~VC-HarmonizerEditor()
 {
 }
 
 //==============================================================================
 // Paint
 //==============================================================================
-void __PLUGIN_NAME__Editor::paint(Graphics& g)
+void VC-HarmonizerEditor::paint(Graphics& g)
 {
     // Background
     g.fillAll(Colour(0xFF1E2530));
@@ -44,7 +44,7 @@ void __PLUGIN_NAME__Editor::paint(Graphics& g)
     // Title
     g.setColour(Colours::white);
     g.setFont(Font(20.0f, Font::bold));
-    g.drawFittedText("__PLUGIN_NAME__", 15, 15, getWidth() - 30, 30,
+    g.drawFittedText("VC-Harmonizer", 15, 15, getWidth() - 30, 30,
                      Justification::left, 1);
 
     // Subtitle
@@ -68,7 +68,7 @@ void __PLUGIN_NAME__Editor::paint(Graphics& g)
 //==============================================================================
 // Resize
 //==============================================================================
-void __PLUGIN_NAME__Editor::resized()
+void VC-HarmonizerEditor::resized()
 {
     //============================================================================
     // TODO: Layout control positions

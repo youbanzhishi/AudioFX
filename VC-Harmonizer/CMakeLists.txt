@@ -7,10 +7,10 @@ cmake_minimum_required(VERSION 3.22)
 #==============================================================================
 # Plugin Configuration - Replace these placeholders
 #==============================================================================
-set(PLUGIN_NAME "__PLUGIN_NAME__")
-set(PLUGIN_CODE "__PLUGIN_CODE__")
+set(PLUGIN_NAME "VC-Harmonizer")
+set(PLUGIN_CODE "VCHM")
 set(PLUGIN_VERSION "1.0.0")
-set(MANUFACTURER_CODE "__MANUFACTURER_CODE__")
+set(MANUFACTURER_CODE "VCAU")
 
 # JUCE Path - MUST be set before project()
 set(JUCE_PATH "/opt/JUCE" CACHE PATH "Path to JUCE")

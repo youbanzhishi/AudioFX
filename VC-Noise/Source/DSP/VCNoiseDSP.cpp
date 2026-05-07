@@ -645,7 +645,7 @@ void VCPluginDSP::learnNoiseProfile(const float* input, int numFrames, int chann
             mag[k] = std::sqrt(real[k] * real[k] + imag[k] * imag[k]);
         }
 
-        mNoiseProfile.mapSpectrumToBands(mag.data(), FFT_SIZE, (float)mSampleRate);
+        mNoiseProfile.accumulate(mag.data(), FFT_SIZE);
         hopCount++;
     }
 

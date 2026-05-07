@@ -33,15 +33,15 @@ namespace Config
 //==============================================================================
 // Main Audio Processor Class
 //==============================================================================
-class __PLUGIN_NAME__Processor : public juce::AudioProcessor,
+class VC-HarmonizerProcessor : public juce::AudioProcessor,
                                   public juce::AudioProcessorValueTreeState::Listener
 {
 public:
     //============================================================================
     // Construction / Destruction
     //============================================================================
-    __PLUGIN_NAME__Processor();
-    ~__PLUGIN_NAME__Processor() override;
+    VC-HarmonizerProcessor();
+    ~VC-HarmonizerProcessor() override;
 
     //============================================================================
     // JUCE AudioProcessor Interface
@@ -63,7 +63,7 @@ public:
     //============================================================================
     // Plugin Information
     //============================================================================
-    const juce::String getName() const override { return "__PLUGIN_NAME__"; }
+    const juce::String getName() const override { return "VC-Harmonizer"; }
     bool acceptsMidi() const override { return false; }
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
@@ -130,5 +130,5 @@ private:
     //============================================================================
     // Non-copyable
     //============================================================================
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(__PLUGIN_NAME__Processor)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(VC-HarmonizerProcessor)
 };
