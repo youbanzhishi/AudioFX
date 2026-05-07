@@ -227,7 +227,12 @@ jobs:
       - name: Run CLI test
         shell: bash
         run: |
-          CLI_BIN=$(find ${{ matrix.plugin }}/build -name "${{ matrix.plugin }}-CLI" -type f 2>/dev/null | head -1)
+          # Prefer standalone CLI (no JUCE dependency, more reliable)
+          CLI_BIN=$(find ${{ matrix.plugin }}/build -name "${{ matrix.plugin }}-CLI-Standalone" -type f 2>/dev/null | head -1)
+          # Fall back to JUCE CLI if standalone not found
+          if [ -z "$CLI_BIN" ]; then
+            CLI_BIN=$(find ${{ matrix.plugin }}/build -name "${{ matrix.plugin }}-CLI" -type f 2>/dev/null | head -1)
+          fi
           
           if [ -z "$CLI_BIN" ]; then
             echo "CLI binary not found for ${{ matrix.plugin }}, skipping CLI test"
