@@ -55,3 +55,29 @@
 - Initial 10 VC plugins (EQ, Comp, Smooth, DeEsser, Gain, Saturator, Limiter, Delay, Reverb, DynamicEQ)
 - VC-Plugin-Template
 - CI/CD with GitHub Actions
+
+## [1.1.0] — 2026-05-07
+
+### Gen 2 Upgrades
+
+**VC-Reverb FDN** — Complete architecture upgrade
+- 8-delay-line Feedback Delay Network with Householder matrix
+- Per-delay-line 1-pole LP for frequency-dependent decay
+- Simplified image-source early reflections
+- 6 new presets: small-room, large-hall, plate, ambient, cathedral
+- Gen1 Schroeder code backed up as .gen1 files
+
+**VC-Stereo** — New plugin (Gen 2)
+- Stereo width control via M/S encoding (0-200%)
+- Constant-power pan (cos/sin panning law)
+- Mono bass via Linkwitz-Riley crossover (optional)
+- 6 presets: bypass/mono/wide/extra-wide/bass-mono/center-pan
+
+**VC-PitchShift** — New plugin (Gen 2)
+- Phase Vocoder pitch shifting (STFT → phase accumulation → ISTFT)
+- Semitone (-12 to +12) + cents micro-tuning
+- Formant preservation (placeholder)
+- 8 presets: bypass/up1/down1/up3/down3/octave-up/octave-down/formant-shift
+
+### Bug Fixes
+- VC-PitchShift: inline pitch ratio computation (was referencing undefined function)
