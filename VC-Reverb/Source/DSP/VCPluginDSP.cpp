@@ -51,7 +51,7 @@ void VCPluginDSP::updateParameters()
     
     // Damping: map 0-100% to a subtle range (0.0 to 0.3)
     // Lower values = less damping (brighter reverb), higher = more damping (darker)
-    mDampingFactor = mParams.damping / 100.0f * 0.3f;
+    mDampingFactor = mParams.damping / 100.0f;
     
     // Calculate feedback from decay (0-100 -> 0.5-0.98)
     float decayNormalized = mParams.decay / 100.0f;
@@ -71,6 +71,20 @@ void VCPluginDSP::updateParameters()
             mAllpasses[ch][i].setFeedback(0.5f);
         }
     }
+    
+    // Post-reverb wet signal filter coefficients
+    // Lowpass: high-cut at 8kHz (remove high-frequency shimmer)
+    // One-pole IIR: y[n] = alpha * x[n] + (1 - alpha) * y[n-1]
+    // alpha = 1 - exp(-2*PI*fc/fs)
+    float lpCutoff = VC_JCLAMP(mParams.wetLPF, 1000.0f, 16000.0f);
+    mWetLPCoeff = 1.0f - std::exp(-2.0f * VC_PI * lpCutoff / static_cast<float>(mSampleRate));
+    
+    // Highpass: low-cut at 200Hz (remove low-frequency rumble)
+    // y[n] = alpha * y[n-1] + alpha * (x[n] - x[n-1])
+    // We use a simplified one-pole: compute HP from (input - LP output)
+    float hpCutoff = VC_JCLAMP(mParams.wetHPF, 20.0f, 500.0f);
+    mWetHPCoeff = 1.0f - std::exp(-2.0f * VC_PI * hpCutoff / static_cast<float>(mSampleRate));
+    
 }
 
 //==============================================================================
@@ -222,8 +236,8 @@ void VCPluginDSP::processInternal(float* left, float* right, int numSamples)
         }
         
         // Normalize comb output
-        combOutL *= 0.25f;
-        combOutR *= 0.25f;
+        combOutL *= 0.15f;
+        combOutR *= 0.15f;
         
         // Process through Allpass filters in series
         float allpassOutL = mAllpasses[0][0].process(combOutL);
@@ -232,9 +246,22 @@ void VCPluginDSP::processInternal(float* left, float* right, int numSamples)
         float allpassOutR = mAllpasses[1][0].process(combOutR);
         allpassOutR = mAllpasses[1][1].process(allpassOutR);
         
-        // Mix dry and wet
-        float outL = dryL * (1.0f - mixFactor) + allpassOutL * mixFactor;
-        float outR = dryR * (1.0f - mixFactor) + allpassOutR * mixFactor;
+        // Apply wet signal filtering (only affects reverb tail, dry is untouched)
+        // Lowpass: high-cut removes high-frequency shimmer from allpass
+        mWetLPFState[0] = mWetLPCoeff * allpassOutL + (1.0f - mWetLPCoeff) * mWetLPFState[0];
+        mWetLPFState[1] = mWetLPCoeff * allpassOutR + (1.0f - mWetLPCoeff) * mWetLPFState[1];
+        float wetFilteredL = mWetLPFState[0];
+        float wetFilteredR = mWetLPFState[1];
+        
+        // Highpass: low-cut removes low-frequency rumble from reverb tail
+        mWetHPFState[0] = mWetHPCoeff * wetFilteredL + (1.0f - mWetHPCoeff) * mWetHPFState[0];
+        mWetHPFState[1] = mWetHPCoeff * wetFilteredR + (1.0f - mWetHPCoeff) * mWetHPFState[1];
+        wetFilteredL = wetFilteredL - mWetHPFState[0];
+        wetFilteredR = wetFilteredR - mWetHPFState[1];
+        
+        // Mix dry and wet (wet is now filtered)
+        float outL = dryL * (1.0f - mixFactor) + wetFilteredL * mixFactor;
+        float outR = dryR * (1.0f - mixFactor) + wetFilteredR * mixFactor;
         
         left[i] = outL;
         right[i] = outR;
@@ -257,6 +284,10 @@ void VCPluginDSP::reset()
         std::fill(mPreDelayBuffer[ch].begin(), mPreDelayBuffer[ch].end(), 0.0f);
     }
     mPreDelayWritePos = 0;
+    
+    // Reset wet filter states
+    mWetLPFState[0] = 0.0f; mWetLPFState[1] = 0.0f;
+    mWetHPFState[0] = 0.0f; mWetHPFState[1] = 0.0f;
     
     // Update filter parameters
     for (int ch = 0; ch < 2; ++ch) {

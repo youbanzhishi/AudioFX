@@ -116,6 +116,8 @@ public:
         float damping = 50.0f;     // High frequency damping % (0~100)
         float preDelay = 20.0f;    // Pre-delay ms (0~100)
         float mix = 30.0f;         // Dry/Wet mix (0~100)
+        float wetLPF = 8000.0f;    // Wet signal high-cut freq (Hz, 1000~16000)
+        float wetHPF = 200.0f;     // Wet signal low-cut freq (Hz, 20~500)
         bool enabled = true;      // Bypass flag
     };
 
@@ -226,5 +228,10 @@ private:
 
     //==============================================================================
     // Non-copyable
+    // Post-reverb wet signal filters
+    float mWetLPFState[2] = {0.0f, 0.0f};  // lowpass state for high-cut
+    float mWetHPFState[2] = {0.0f, 0.0f};  // highpass state for low-cut
+    float mWetLPCoeff = 0.0f;   // lowpass coefficient (from wetLPF param)
+    float mWetHPCoeff = 0.0f;   // highpass coefficient (from wetHPF param)
     VC_DECLARE_NON_COPYABLE(VCPluginDSP)
 };

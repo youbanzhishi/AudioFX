@@ -29,11 +29,11 @@ struct Preset {
 };
 
 static const Preset presets[] = {
-    {"bypass", {50.0f, 50.0f, 50.0f, 20.0f, 30.0f, false}},
-    {"small-room", {30.0f, 40.0f, 60.0f, 10.0f, 25.0f, true}},
-    {"large-hall", {80.0f, 70.0f, 40.0f, 30.0f, 35.0f, true}},
-    {"plate", {60.0f, 55.0f, 30.0f, 5.0f, 40.0f, true}},
-    {"ambient", {90.0f, 80.0f, 70.0f, 50.0f, 20.0f, true}},
+    {"bypass", {50.0f, 50.0f, 50.0f, 20.0f, 30.0f, 8000.0f, 200.0f, false}},
+    {"small-room", {30.0f, 40.0f, 60.0f, 10.0f, 25.0f, 8000.0f, 200.0f, true}},
+    {"large-hall", {80.0f, 70.0f, 40.0f, 30.0f, 35.0f, 6000.0f, 150.0f, true}},
+    {"plate", {60.0f, 55.0f, 30.0f, 5.0f, 40.0f, 10000.0f, 100.0f, true}},
+    {"ambient", {90.0f, 80.0f, 70.0f, 50.0f, 20.0f, 5000.0f, 250.0f, true}},
 };
 
 //==============================================================================
@@ -50,6 +50,8 @@ void printHelp(const char* progName) {
     std::cout << "  --damping <0-100>    High frequency damping percentage (default: 50)\n";
     std::cout << "  --predelay <0-100>   Pre-delay in ms (default: 20)\n";
     std::cout << "  --mix <0-100>        Dry/Wet mix percentage (default: 30)\n";
+    std::cout << "  --wetlpf <1000-16000> Wet signal high-cut freq Hz (default: 8000)\n";
+    std::cout << "  --wethpf <20-500>     Wet signal low-cut freq Hz (default: 200)\n";
     std::cout << "  --bypass <0|1>       Bypass processing (default: 0)\n\n";
     std::cout << "Examples:\n";
     std::cout << "  " << progName << " in.wav out.wav --preset large-hall\n";
@@ -211,6 +213,17 @@ int main(int argc, char** argv) {
         params.mix = std::stof(args["--mix"]);
         dsp.setParams(params);
         std::cout << "Mix: " << params.mix << "%\n";
+    if (args.count("--wetlpf")) {
+        params.wetLPF = std::stof(args["--wetlpf"]);
+        dsp.setParams(params);
+        std::cout << "Wet LPF (high-cut): " << params.wetLPF << " Hz\n";
+    }
+
+    if (args.count("--wethpf")) {
+        params.wetHPF = std::stof(args["--wethpf"]);
+        dsp.setParams(params);
+        std::cout << "Wet HPF (low-cut): " << params.wetHPF << " Hz\n";
+    }
     }
 
     if (args.count("--bypass")) {

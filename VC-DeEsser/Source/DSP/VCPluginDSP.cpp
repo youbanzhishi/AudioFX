@@ -112,13 +112,13 @@ void VCDeEsserDSP::process(juce::dsp::AudioBlock<float>& block)
             float env = std::abs(bp);
             mEnvelope[ch] = mAttack * mEnvelope[ch] + (1.0f - mAttack) * env;
             
-            // Gain reduction
+            // Gain reduction - simple threshold-based with max reduction cap
             float gain = 1.0f;
             if (mEnvelope[ch] > threshGain) {
                 float overDb = linearToDb(mEnvelope[ch] / threshGain);
-                float reductionDb = overDb * (1.0f - 1.0f / maxReduction);  // ratio-based
+                // Reduction: scale over-threshold amount, capped by maxReduction
+                float reductionDb = std::min(overDb * 0.8f, -mParams.reduction);  // reduction is negative, so -reduction is positive
                 gain = dBToLinear(-reductionDb);
-                gain = std::max(gain, maxReduction);
             }
             
             float processed = in * gain;
@@ -151,13 +151,12 @@ void VCDeEsserDSP::processInternal(float* left, float* right, int numSamples)
             float env = std::abs(bp);
             mEnvelope[ch] = mAttack * mEnvelope[ch] + (1.0f - mAttack) * env;
             
-            // Gain reduction
+            // Gain reduction - simple threshold-based with max reduction cap
             float gain = 1.0f;
             if (mEnvelope[ch] > threshGain) {
                 float overDb = linearToDb(mEnvelope[ch] / threshGain);
-                float reductionDb = overDb * (1.0f - 1.0f / maxReduction);  // ratio-based
+                float reductionDb = std::min(overDb * 0.8f, -mParams.reduction);
                 gain = dBToLinear(-reductionDb);
-                gain = std::max(gain, maxReduction);
             }
             
             float processed = in * gain;
