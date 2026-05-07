@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.2.0] - 2026-05-08
+
+### New: VC-Arp Arpeggiator
+- 7 arp modes: up/down/up-down/down-up/random/as-played/chord
+- Rate: 1/1 to 1/32 notes
+- Octave range: 1-4
+- Gate: 1-200%
+- Swing + Humanize + Velocity modes
+- 9 presets: up-8th, down-8th, up-down-16th, trance-gate, random-bells, chord-pad, octave-run, ping-pong, bypass
+
+### Plugin Count: 23 (20 effects + 3 instruments)
+
 ## [2.1.0] - 2026-05-08
 
 ### 🎹 New: Virtual Instrument Plugins
