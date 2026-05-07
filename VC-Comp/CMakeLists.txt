@@ -40,7 +40,7 @@ set_target_properties (VC-Comp-CLI PROPERTIES
 #==========================================
 add_executable (VC-Comp-CLI-Standalone Source/CLI_Standalone/main.cpp ${DSP_SOURCES})
 target_include_directories (VC-Comp-CLI-Standalone PRIVATE 
-    ${CMAKE_SOURCE_DIR}/Libs/dr_wav
+    ${CMAKE_SOURCE_DIR}/../Libs/dr_wav
 )
 target_compile_definitions (VC-Comp-CLI-Standalone PRIVATE VC_STANDALONE)
 target_link_libraries (VC-Comp-CLI-Standalone PRIVATE)  # No extra dependencies

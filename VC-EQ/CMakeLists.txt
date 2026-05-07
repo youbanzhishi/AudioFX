@@ -16,7 +16,7 @@ set_target_properties (VC-EQ-CLI PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRE
 # Standalone CLI (no JUCE dependency)
 add_executable (VC-EQ-CLI-Standalone Source/CLI_Standalone/main.cpp ${DSP_SOURCES})
 target_include_directories (VC-EQ-CLI-Standalone PRIVATE 
-    ${CMAKE_SOURCE_DIR}/Libs/dr_wav
+    ${CMAKE_SOURCE_DIR}/../Libs/dr_wav
 )
 target_compile_definitions (VC-EQ-CLI-Standalone PRIVATE VC_STANDALONE)
 target_link_libraries (VC-EQ-CLI-Standalone PRIVATE)  # No extra dependencies
