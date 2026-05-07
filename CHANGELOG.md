@@ -1,5 +1,40 @@
 # Changelog
 
+## [2.0.0] - 2026-05-08
+
+### 🎉 Major Release: All Gen2 Upgrades Complete
+
+#### Gen2 Upgrades (13 plugins)
+- **VC-EQ**: IIR安全钳位(freq/Q/gain/a0/极点/denormal防护)
+- **VC-Comp**: 多段压缩(LR4分频+4段独立压缩)+envelope sqrt()修复
+- **VC-Reverb**: FDN混响(8延迟线+Householder矩阵+图像法早期反射)
+- **VC-Tune**: PSOLA+LPC共振峰保留+formant-preserve/shift+vibrato-preserve
+- **VC-Stereo**: MS编解码+线性声像+低频单声道
+- **VC-PitchShift**: Phase Vocoder+时域拉伸+共振峰保留
+- **VC-MultiBand**: 4频段LR4分频路由器+每段增益/压缩+solo/mute
+- **VC-Harmonizer**: 智能和声生成(YIN+K-S+4声部+LPC共振峰)
+- **VC-Noise**: 谱减降噪(radix-2 FFT+噪声指纹+谱减法+噪声门)
+- **VC-Delay**: BPM同步+多抽头(1-4)+Ping-Pong+反馈HPF/LPF
+- **VC-DynamicEQ**: 4频段动态EQ+Bell/LS/HS/Notch+侧链
+- **VC-Gate**: 侧链HPF+前瞻+滞后+Range深度+Attack-Hold
+- **VC-Chorus**: 多声部(2-8)+LFO波形选择+立体声相位+反馈
+
+#### Bug Fixes
+- VC-NoiseProfile谱减法Peak过冲修复（硬限幅保护）
+- VC-Noise输出通道数修正（匹配输入通道数）
+- VC-Comp envelope线性转换修复
+- VC-EQ IIR系数6项安全钳位
+
+#### CI/CD
+- gen2-verify job扩展到8个Gen2插件
+- release.yml DSP文件名映射补全
+
+#### Plugin Registry: 20 plugins total
+- Gen1 (7): VC-Gain, VC-Saturator, VC-Limiter, VC-DeEsser, VC-SurgicalDeEsser, VC-Distortion, VC-Smooth
+- Gen1→Gen2 Upgraded (6): VC-EQ, VC-Comp, VC-Reverb, VC-Tune, VC-Noise, VC-DynamicEQ
+- Gen2 New (7): VC-Stereo, VC-PitchShift, VC-MultiBand, VC-Harmonizer, VC-Delay, VC-Gate, VC-Chorus
+
+
 ## [1.6.0] - 2026-05-08
 
 ### Added
