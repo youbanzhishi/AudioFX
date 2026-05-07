@@ -224,49 +224,68 @@ jobs:
           echo "Test signal generated"
           soxi test_input.wav
 
-      - name: Run CLI test
+      - name: Run CLI test (both JUCE and Standalone)
         shell: bash
         run: |
-          # Prefer standalone CLI (no JUCE dependency, more reliable)
-          CLI_BIN=$(find ${{ matrix.plugin }}/build -name "${{ matrix.plugin }}-CLI-Standalone" -type f 2>/dev/null | head -1)
-          # Fall back to JUCE CLI if standalone not found
-          if [ -z "$CLI_BIN" ]; then
-            CLI_BIN=$(find ${{ matrix.plugin }}/build -name "${{ matrix.plugin }}-CLI" -type f 2>/dev/null | head -1)
-          fi
+          test_cli() {
+            local cli_bin=$1
+            local label=$2
+            echo "=== Testing $label ==="
+            $cli_bin --help || true
+            $cli_bin test_input.wav test_output_${label}.wav || {
+              echo "$label execution failed"
+              return 1
+            }
+            if [ ! -f "test_output_${label}.wav" ]; then
+              echo "$label: Output file not created"
+              return 1
+            fi
+            OUTPUT_SIZE=$(stat -c%s test_output_${label}.wav 2>/dev/null || echo 0)
+            if [ "$OUTPUT_SIZE" -lt 1000 ]; then
+              echo "$label: Output file too small: $OUTPUT_SIZE bytes"
+              return 1
+            fi
+            soxi test_output_${label}.wav || {
+              echo "$label: Output is not a valid WAV"
+              return 1
+            }
+            echo "$label test passed!"
+            return 0
+          }
           
-          if [ -z "$CLI_BIN" ]; then
-            echo "CLI binary not found for ${{ matrix.plugin }}, skipping CLI test"
+          # Test Standalone CLI first (faster, no JUCE runtime)
+          STANDALONE_BIN=$(find ${{ matrix.plugin }}/build -name "${{ matrix.plugin }}-CLI-Standalone" -type f 2>/dev/null | head -1)
+          # Test JUCE CLI
+          JUCE_BIN=$(find ${{ matrix.plugin }}/build -name "${{ matrix.plugin }}-CLI" -type f 2>/dev/null | head -1)
+          
+          if [ -z "$STANDALONE_BIN" ] && [ -z "$JUCE_BIN" ]; then
+            echo "No CLI binary found for ${{ matrix.plugin }}, skipping CLI test"
             exit 0
           fi
           
-          echo "Testing with: $CLI_BIN"
-          $CLI_BIN --help || true
+          PASSED=0
+          FAILED=0
           
-          $CLI_BIN test_input.wav test_output.wav || {
-            echo "CLI execution failed"
-            exit 1
-          }
-          
-          if [ ! -f "test_output.wav" ]; then
-            echo "Output file not created"
-            exit 1
+          if [ -n "$STANDALONE_BIN" ]; then
+            if test_cli "$STANDALONE_BIN" "standalone"; then
+              PASSED=$((PASSED + 1))
+            else
+              FAILED=$((FAILED + 1))
+            fi
           fi
           
-          OUTPUT_SIZE=$(stat -c%s test_output.wav 2>/dev/null || echo 0)
-          if [ "$OUTPUT_SIZE" -lt 1000 ]; then
-            echo "Output file too small: $OUTPUT_SIZE bytes"
-            exit 1
+          if [ -n "$JUCE_BIN" ]; then
+            if test_cli "$JUCE_BIN" "juce"; then
+              PASSED=$((PASSED + 1))
+            else
+              FAILED=$((FAILED + 1))
+            fi
           fi
           
-          soxi test_output.wav || {
-            echo "Output is not a valid WAV"
+          echo "=== CLI Test Summary: $PASSED passed, $FAILED failed ==="
+          if [ "$FAILED" -gt 0 ]; then
             exit 1
-          }
-          
-          INPUT_DUR=$(soxi -D test_input.wav)
-          OUTPUT_DUR=$(soxi -D test_output.wav)
-          echo "Input: ${INPUT_DUR}s, Output: ${OUTPUT_DUR}s"
-          echo "CLI test passed for ${{ matrix.plugin }}!"
+          fi
 
   # ──────────────────────────────────────
   # 阶段3: 汇总打包 + 发Release
