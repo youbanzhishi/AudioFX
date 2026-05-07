@@ -74,27 +74,32 @@ void VCEQDSP::process(float* left, float* right, int numSamples)
     // Standalone: process each band with manual IIR
     processIIR(left, right, numSamples);
 #else
-    // JUCE: use AudioBlock
-    // 复制到内部缓冲区
+    // JUCE: use AudioBlock (non-interleaved layout)
+    // Copy to non-interleaved internal buffer: [LLLL...RRRR...]
+    if ((int)mInternalBuffer.size() < numSamples * 2)
+        mInternalBuffer.resize(numSamples * 2);
+    
+    float* leftBuf = mInternalBuffer.data();
+    float* rightBuf = mInternalBuffer.data() + numSamples;
+    
     for (int i = 0; i < numSamples; ++i)
     {
-        mInternalBuffer[i * 2] = left[i];
-        mInternalBuffer[i * 2 + 1] = right[i];
+        leftBuf[i] = left[i];
+        rightBuf[i] = right[i];
     }
     
-    // 更新指针
-    mInternalPtrs[0] = mInternalBuffer.data();
-    mInternalPtrs[1] = mInternalBuffer.data() + numSamples;
+    mInternalPtrs[0] = leftBuf;
+    mInternalPtrs[1] = rightBuf;
     
-    // 创建 AudioBlock
+    // Create AudioBlock from non-interleaved channel pointers
     juce::dsp::AudioBlock<float> block(mInternalPtrs.data(), 2, numSamples);
     process(block);
     
-    // 复制回输出
+    // Copy back
     for (int i = 0; i < numSamples; ++i)
     {
-        left[i] = mInternalBuffer[i * 2];
-        right[i] = mInternalBuffer[i * 2 + 1];
+        left[i] = leftBuf[i];
+        right[i] = rightBuf[i];
     }
 #endif
 }
