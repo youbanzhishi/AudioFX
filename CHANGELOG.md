@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.4.1] - 2026-05-15
+
+### AudioFX v2.4.1 - VC-Harmonizer Clipping Fix + VC-Limiter Bypass Fix + DSP Validation Suite
+
+#### Bug Fixes
+- fix: VC-Harmonizer extreme clipping (normalization factor + hard limiter, Peak 53.91→1.0)
+- fix: VC-Limiter bypass logic inversion (--bypass 1→enabled=false + DSP layer check)
+
+#### Tests
+- New DSP algorithm validation test suite (137 tests, 4 bugs discovered + 2 fixed)
+
 ## [2.4.0] - 2026-05-08
 
 ### AudioFX v2.4.0 - Preset System with Batch Processing and Effect Chain CLI
