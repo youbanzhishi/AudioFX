@@ -1,143 +1,134 @@
 #pragma once
 
-// ============================================================
-// JUCE 模块头文件
-// ============================================================
+//==============================================================================
+// JUCE Audio Processor Header
+// Template for VST3 Audio Plugin Development
+//==============================================================================
+
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_dsp/juce_dsp.h>
 #include <vector>
-#include <cmath>
 
-// ============================================================
-// TODO: 定义插件特定参数 ID
-// namespace ParameterIDs
-// {
-//     // 示例参数
-//     static const juce::String bypass = "bypass";
-//     static const juce::String gain = "gain";
-//     static const juce::String mix = "mix";
-// }
-// ============================================================
+#include "DSP/VCPluginDSP.h"
 
-// ============================================================
-// TODO: 可选 - 定义处理配置常量
-// namespace Config
-// {
-//     static const int kFFTSize = 4096;
-//     static const int kHopSize = 1024;
-// }
-// ============================================================
+//==============================================================================
+// Parameter IDs
+// TODO: Replace with your plugin's parameter IDs
+//==============================================================================
+namespace ParameterIDs
+{
+    static const juce::String bypass = "bypass";
+    static const juce::String gain = "gain";
+    static const juce::String mix = "mix";
+}
 
-// ============================================================
-// 主处理器类
-// ============================================================
-class [[PLUGIN_NAME]]Processor : public juce::AudioProcessor, 
+//==============================================================================
+// Configuration Constants
+//==============================================================================
+namespace Config
+{
+    static const int kBlockSize = 512;
+}
+
+//==============================================================================
+// Main Audio Processor Class
+//==============================================================================
+class __PLUGIN_NAME__Processor : public juce::AudioProcessor,
                                   public juce::AudioProcessorValueTreeState::Listener
 {
 public:
-    // ============================================================
-    // 构造函数和析构函数
-    // ============================================================
-    [[PLUGIN_NAME]]Processor();
-    ~[[PLUGIN_NAME]]Processor();
+    //============================================================================
+    // Construction / Destruction
+    //============================================================================
+    __PLUGIN_NAME__Processor();
+    ~__PLUGIN_NAME__Processor() override;
 
-    // ============================================================
-    // JUCE AudioProcessor 接口
-    // ============================================================
-    void prepareToPlay (double sampleRate, int samplesPerBlock) override;
+    //============================================================================
+    // JUCE AudioProcessor Interface
+    //============================================================================
+    void prepareToPlay(double sampleRate, int samplesPerBlock) override;
     void releaseResources() override;
 
-    bool isBusesLayoutSupported (const BusesLayout& layouts) const override;
-    void processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiBuffer) override;
+    bool isBusesLayoutSupported(const BusesLayout& layouts) const override;
 
-    // ============================================================
-    // 编辑器
-    // ============================================================
+    void processBlock(juce::AudioBuffer<float>& buffer,
+                      juce::MidiBuffer& midiBuffer) override;
+
+    //============================================================================
+    // Editor
+    //============================================================================
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
 
-    // ============================================================
-    // 插件信息
-    // ============================================================
-    const juce::String getName() const override { return "[[PLUGIN_NAME]]"; }
+    //============================================================================
+    // Plugin Information
+    //============================================================================
+    const juce::String getName() const override { return "__PLUGIN_NAME__"; }
     bool acceptsMidi() const override { return false; }
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
     double getTailLengthSeconds() const override { return 0.0; }
 
-    // ============================================================
-    // 程序（预设）支持
-    // ============================================================
+    //============================================================================
+    // Program (Preset) Support
+    //============================================================================
     int getNumPrograms() override { return 1; }
     int getCurrentProgram() override { return 0; }
-    void setCurrentProgram (int) override {}
-    const juce::String getProgramName (int) override { return {}; }
-    void changeProgramName (int, const juce::String&) override {}
+    void setCurrentProgram(int) override {}
+    const juce::String getProgramName(int) override { return {}; }
+    void changeProgramName(int, const juce::String&) override {}
 
-    // ============================================================
-    // 状态保存/恢复
-    // ============================================================
-    void getStateInformation (juce::MemoryBlock& destData) override;
-    void setStateInformation (const void* data, int sizeInBytes) override;
-    
-    // ============================================================
-    // 参数监听回调
-    // ============================================================
-    void parameterChanged (const juce::String& parameterID, float newValue) override;
-    
-    // ============================================================
-    // 获取 AudioProcessorValueTreeState
-    // ============================================================
+    //============================================================================
+    // State Save/Restore
+    //============================================================================
+    void getStateInformation(juce::MemoryBlock& destData) override;
+    void setStateInformation(const void* data, int sizeInBytes) override;
+
+    //============================================================================
+    // Parameter Listener Callback
+    //============================================================================
+    void parameterChanged(const juce::String& parameterID, float newValue) override;
+
+    //============================================================================
+    // Accessor for APVTS
+    //============================================================================
     juce::AudioProcessorValueTreeState& getAPVTS() { return mAPVTS; }
 
-    // ============================================================
-    // TODO: 定义处理参数结构体（可选）
-    // struct ProcessParams
-    // {
-    //     float gain = 0.0f;
-    //     float mix = 100.0f;
-    // };
-    // ============================================================
+    //============================================================================
+    // DSP Instance Access
+    //============================================================================
+    VCPluginDSP& getDSP() { return mDSP; }
 
 private:
-    // ============================================================
-    // 创建参数布局
-    // ============================================================
+    //============================================================================
+    // Create Parameter Layout
+    //============================================================================
     juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
-    
-    // ============================================================
-    // TODO: 实现 DSP 处理方法
-    // void processDSP(juce::AudioBuffer<float>& buffer);
-    // ============================================================
-    
-    // ============================================================
-    // DSP 处理规格
-    // ============================================================
+
+    //============================================================================
+    // DSP Processing Specification
+    //============================================================================
     juce::dsp::ProcessSpec mProcessSpec;
-    
-    // ============================================================
-    // TODO: 添加 DSP 处理相关成员变量
-    // 示例: 
-    // - FFT 缓冲区
-    // - 滤波器状态
-    // - 包络 follower
-    // ============================================================
-    
-    // ============================================================
-    // 参数状态
-    // ============================================================
+
+    //============================================================================
+    // DSP Processing Class
+    //============================================================================
+    VCPluginDSP mDSP;
+
+    //============================================================================
+    // Processing State
+    //============================================================================
     bool mBypass = false;
-    
-    // ============================================================
-    // TODO: 添加处理参数
-    // ProcessParams mParams;
-    // ============================================================
-    
-    // ============================================================
+    float mGainDB = 0.0f;
+    float mMix = 100.0f;
+
+    //============================================================================
     // AudioProcessorValueTreeState
-    // ============================================================
+    //============================================================================
     juce::AudioProcessorValueTreeState mAPVTS;
-    
-    // ============================================================
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR ([[PLUGIN_NAME]]Processor)
+
+    //============================================================================
+    // Non-copyable
+    //============================================================================
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(__PLUGIN_NAME__Processor)
 };
