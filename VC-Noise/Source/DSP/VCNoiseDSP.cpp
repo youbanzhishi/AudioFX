@@ -218,28 +218,14 @@ void VCNoiseProfile::finalize()
 void VCNoiseProfile::getFullSpectrum(float* outPower, int fftSize, float sampleRate) const
 {
     // Interpolate 64 bands back to full FFT resolution
-    float nyquist = (float)sampleRate / 2.0f;
-    float melMin = 0.0f;
-    float melMax = 2595.0f * std::log10(1.0f + nyquist / 700.0f);
-    float melStep = (melMax - melMin) / (float)NUM_BANDS;
-    float edges[NUM_BANDS + 1];
-    for (int i = 0; i <= NUM_BANDS; ++i) {
-        float mel = melMin + melStep * (float)i;
-        edges[i] = 700.0f * (std::pow(10.0f, mel / 2595.0f) - 1.0f);
-    }
-
+    // Uses linear band mapping (matching accumulate())
     int halfFFT = fftSize / 2 + 1;
+    int binsPerBand = halfFFT / NUM_BANDS;
+    if (binsPerBand < 1) binsPerBand = 1;
+
     for (int k = 0; k < halfFFT; ++k) {
-        float freq = (float)k * (float)sampleRate / (float)fftSize;
-        // Find which band this frequency falls into
-        int band = 0;
-        for (int b = 0; b < NUM_BANDS; ++b) {
-            if (freq >= edges[b] && freq < edges[b + 1]) {
-                band = b;
-                break;
-            }
-            if (b == NUM_BANDS - 1) band = b;
-        }
+        int band = k / binsPerBand;
+        if (band >= NUM_BANDS) band = NUM_BANDS - 1;
         outPower[k] = mBandEnergies[band];
     }
     // Mirror for negative frequencies
@@ -619,16 +605,13 @@ void VCPluginDSP::learnNoiseProfile(const float* input, int numFrames, int chann
     int samplesToUse = std::min(learnSamples, numFrames);
 
     // Process in FFT-sized frames with hop
-    int hopCount = 0;
     for (int start = 0; start + FFT_SIZE <= samplesToUse; start += HOP_SIZE) {
-        // Apply window and FFT
         std::vector<float> windowed(FFT_SIZE);
         if (channels == 1) {
             for (int i = 0; i < FFT_SIZE; ++i) {
                 windowed[i] = input[start + i] * mWindow[i];
             }
         } else {
-            // Mix L+R to mono for profile
             for (int i = 0; i < FFT_SIZE; ++i) {
                 float l = input[(start + i) * channels];
                 float r = input[(start + i) * channels + 1];
@@ -639,23 +622,19 @@ void VCPluginDSP::learnNoiseProfile(const float* input, int numFrames, int chann
         std::vector<float> real(FFT_SIZE), imag(FFT_SIZE);
         mFFT.forward(windowed.data(), real.data(), imag.data());
 
-        // Compute magnitude
         std::vector<float> mag(FFT_SIZE / 2 + 1);
         for (int k = 0; k <= FFT_SIZE / 2; ++k) {
             mag[k] = std::sqrt(real[k] * real[k] + imag[k] * imag[k]);
         }
 
         mNoiseProfile.accumulate(mag.data(), FFT_SIZE);
-        hopCount++;
     }
 
-    if (hopCount > 0) {
+    if (mNoiseProfile.getFrameCount() > 0) {
         mNoiseProfile.finalize();
         mProfileLearned = true;
     }
-}
-
-//==============================================================================
+}//==============================================================================
 // Gen2: Process input with learned noise profile (STFT-based)
 //==============================================================================
 void VCPluginDSP::processWithProfile(float* left, float* right, int numSamples)
