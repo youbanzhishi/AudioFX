@@ -1,5 +1,30 @@
 # Changelog
 
+## [2.3.0] - 2026-05-15
+
+### JUCE VST3 Build Support for Instrument Plugins
+
+#### VC-Drum — JUCE VST3 Build Support
+- IS_SYNTH=TRUE flag enabled for JUCE VST3 plugin
+- GM (General MIDI) percussion channel mapping (Channel 10)
+- MIDI note-triggered drum synthesis in VST3 host
+
+#### VC-Arp — JUCE VST3 Build Support
+- IS_SYNTH=TRUE flag enabled for JUCE VST3 plugin
+- Chord note tracking via MIDI input
+- Full MIDI input support for arpeggiator triggering
+
+#### VC-Synth — VST3 Verification
+- VST3 build verified (IS_SYNTH already supported)
+- Confirmed working in VST3 host environments
+
+#### CMake Configuration
+- All 3 instrument plugin CMake configurations verified and passing
+- VC-Drum, VC-Arp, VC-Synth VST3 builds all confirmed
+
+### Plugin Count: 23 (20 effects + 3 instruments)
+
+
 ## [2.2.0] - 2026-05-08
 
 ### New: VC-Arp Arpeggiator
