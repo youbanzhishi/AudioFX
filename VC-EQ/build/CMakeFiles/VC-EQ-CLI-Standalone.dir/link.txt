@@ -1,1 +1,0 @@
-/usr/bin/g++ -O3 -DNDEBUG CMakeFiles/VC-EQ-CLI-Standalone.dir/Source/CLI_Standalone/main.cpp.o CMakeFiles/VC-EQ-CLI-Standalone.dir/Source/DSP/VCEQDSP.cpp.o -o CLI_Standalone/VC-EQ-CLI-Standalone 
