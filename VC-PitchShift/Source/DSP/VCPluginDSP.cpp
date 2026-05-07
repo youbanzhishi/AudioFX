@@ -1,15 +1,16 @@
 //==============================================================================
 // VC-PitchShift DSP Core Implementation - Phase Vocoder Pitch Shifting
 //
-// Correct Phase Vocoder pitch shift algorithm:
-//   1. STFT analysis with hop size hopA = PV_HOP_SIZE
-//   2. Phase unwrapping → instantaneous frequency
-//   3. Phase accumulation for synthesis (NO frequency scaling)
-//   4. ISTFT synthesis with hop size hopS = hopA / pitchRatio
-//      - For pitch UP: hopS < hopA (time compression → pitch up)
-//      - For pitch DOWN: hopS > hopA (time expansion → pitch down)
-//   5. The output signal duration remains the same because we process
-//      all frames from the same input block
+// Correct approach: Time-stretch + Resample
+//   1. Time-stretch: Use different analysis/synthesis hops
+//      - For pitch UP (ratio > 1): time-compress (hopS < hopA)
+//      - For pitch DOWN (ratio < 1): time-expand (hopS > hopA)
+//   2. Resample: Convert back to original duration
+//      - For pitch UP: we have fewer output samples, resample UP
+//      - For pitch DOWN: we have more output samples, resample DOWN
+//
+// Combined: The pitch shift ratio determines the time-stretch factor,
+// and then linear interpolation resamples to the original length.
 //==============================================================================
 
 #include "VCPluginDSP.h"
@@ -34,7 +35,6 @@ void VCPluginDSP::prepare(double sampleRate, int blockSize)
     for (int ch = 0; ch < 2; ++ch) {
         mPVState[ch].prevPhase.resize(PV_FFT_SIZE_2, 0.0f);
         mPVState[ch].synthPhase.resize(PV_FFT_SIZE_2, 0.0f);
-        mSpectralEnvelope[ch].resize(PV_FFT_SIZE_2, 0.0f);
     }
 
     mHannWindow.resize(PV_FFT_SIZE);
@@ -47,6 +47,10 @@ void VCPluginDSP::prepare(double sampleRate, int blockSize)
     mInternalPtrs.resize(2);
     mInternalPtrs[0] = mInternalBuffer.data();
     mInternalPtrs[1] = mInternalBuffer.data() + blockSize;
+
+    // Stretched buffer (2x max for safety)
+    mStretchedBuffer[0].resize(PV_FFT_SIZE * 8, 0.0f);
+    mStretchedBuffer[1].resize(PV_FFT_SIZE * 8, 0.0f);
 
     mInputCopy[0].resize(PV_FFT_SIZE * 4, 0.0f);
     mInputCopy[1].resize(PV_FFT_SIZE * 4, 0.0f);
@@ -93,9 +97,7 @@ void VCPluginDSP::process(juce::dsp::AudioBlock<float>& block)
     if (!mEnabled) return;
     auto numSamples = static_cast<int>(block.getNumSamples());
     if (numSamples < 1) return;
-    float* leftBuf = block.getChannelPointer(0);
-    float* rightBuf = block.getChannelPointer(1);
-    processInternal(leftBuf, rightBuf, numSamples);
+    processInternal(block.getChannelPointer(0), block.getChannelPointer(1), numSamples);
 }
 #endif
 
@@ -140,28 +142,32 @@ void VCPluginDSP::fft(float* real, float* imag, int N, bool inverse)
 }
 
 //==============================================================================
-// Phase Vocoder for one channel
-// Key: analysis hop = hopA, synthesis hop = hopS
-// For pitch shift ratio α: hopS = hopA / α
-// Phase accumulation uses TRUE frequencies (not scaled)
+// Time-stretch one channel using phase vocoder
+// Returns the number of samples in the stretched output
 //==============================================================================
-void VCPluginDSP::processChannelPV(const float* input, float* output, int numSamples, int channel)
+int VCPluginDSP::timeStretchChannel(const float* input, int numSamples,
+                                     float* stretchedOut, int maxStretchedSamples,
+                                     int channel)
 {
-    float pitchRatio = mPitchRatio;
     float sampleRateF = static_cast<float>(mSampleRate);
     float binFreq = sampleRateF / static_cast<float>(PV_FFT_SIZE);
+    float alpha = mPitchRatio;  // pitch shift ratio
 
-    int hopA = PV_HOP_SIZE;  // Analysis hop
-    // Synthesis hop: for pitch UP, hopS < hopA (frames more densely packed → higher pitch)
-    int hopS = static_cast<int>(static_cast<float>(hopA) / pitchRatio + 0.5f);
+    // For time-stretching by factor 1/alpha:
+    // If pitch UP (alpha > 1), time-compress by 1/alpha → shorter output
+    // If pitch DOWN (alpha < 1), time-expand by 1/alpha → longer output
+    float timeStretchFactor = alpha;
+
+    int hopA = PV_HOP_SIZE;
+    int hopS = static_cast<int>(static_cast<float>(hopA) * timeStretchFactor + 0.5f);
     if (hopS < 1) hopS = 1;
     if (hopS > PV_FFT_SIZE) hopS = PV_FFT_SIZE;
 
     float* prevPhase = mPVState[channel].prevPhase.data();
     float* synthPhase = mPVState[channel].synthPhase.data();
 
-    // Zero the output
-    std::fill(output, output + numSamples, 0.0f);
+    // Zero the stretched output
+    std::fill(stretchedOut, stretchedOut + maxStretchedSamples, 0.0f);
 
     // Number of analysis frames
     int numFrames = 1;
@@ -172,7 +178,7 @@ void VCPluginDSP::processChannelPV(const float* input, float* output, int numSam
     for (int frame = 0; frame < numFrames; ++frame) {
         int inputStart = frame * hopA;
 
-        // Extract and window the analysis frame
+        // Extract and window
         for (int k = 0; k < PV_FFT_SIZE; ++k) {
             int idx = inputStart + k;
             float sample = (idx < numSamples) ? input[idx] : 0.0f;
@@ -180,37 +186,26 @@ void VCPluginDSP::processChannelPV(const float* input, float* output, int numSam
             mFFTImag[k] = 0.0f;
         }
 
-        // Forward FFT
         fft(mFFTReal.data(), mFFTImag.data(), PV_FFT_SIZE, false);
 
-        // Process frequency bins
         float magnitude[2048 / 2 + 1];
 
         for (int k = 0; k < PV_FFT_SIZE_2; ++k) {
             magnitude[k] = std::sqrt(mFFTReal[k] * mFFTReal[k] + mFFTImag[k] * mFFTImag[k]);
             float phase = std::atan2(mFFTImag[k], mFFTReal[k]);
 
-            // Phase difference from previous frame
             float phaseDiff = phase - prevPhase[k];
-
-            // Expected phase advance for bin k with analysis hop
             float expectedPhaseAdvance = 2.0f * VC_PI * static_cast<float>(k)
                                         * static_cast<float>(hopA)
                                         / static_cast<float>(PV_FFT_SIZE);
-
-            // Remove expected phase advance
             phaseDiff -= expectedPhaseAdvance;
-
-            // Wrap to [-pi, pi]
             while (phaseDiff > VC_PI)  phaseDiff -= 2.0f * VC_PI;
             while (phaseDiff < -VC_PI) phaseDiff += 2.0f * VC_PI;
 
-            // True instantaneous frequency
             float trueFreq = static_cast<float>(k) * binFreq
                            + phaseDiff * sampleRateF / (2.0f * VC_PI * static_cast<float>(hopA));
 
-            // Accumulate synthesis phase using TRUE frequency and SYNTHESIS hop
-            // Do NOT scale the frequency - the pitch shift comes from the different hop size
+            // Accumulate synthesis phase using synthesis hop
             synthPhase[k] += 2.0f * VC_PI * trueFreq * static_cast<float>(hopS) / sampleRateF;
 
             prevPhase[k] = phase;
@@ -221,7 +216,7 @@ void VCPluginDSP::processChannelPV(const float* input, float* output, int numSam
             float savedMag[2048 / 2 + 1];
             for (int k = 0; k < PV_FFT_SIZE_2; ++k) savedMag[k] = magnitude[k];
             for (int k = 0; k < PV_FFT_SIZE_2; ++k) {
-                float srcBin = static_cast<float>(k) / pitchRatio;
+                float srcBin = static_cast<float>(k) / alpha;
                 int srcIdx0 = static_cast<int>(srcBin);
                 int srcIdx1 = srcIdx0 + 1;
                 if (srcIdx0 >= 0 && srcIdx1 < PV_FFT_SIZE_2) {
@@ -235,7 +230,6 @@ void VCPluginDSP::processChannelPV(const float* input, float* output, int numSam
             }
         }
 
-        // Reconstruct frequency domain
         for (int k = 0; k < PV_FFT_SIZE_2; ++k) {
             mFFTReal[k] = magnitude[k] * std::cos(synthPhase[k]);
             mFFTImag[k] = magnitude[k] * std::sin(synthPhase[k]);
@@ -246,28 +240,55 @@ void VCPluginDSP::processChannelPV(const float* input, float* output, int numSam
             mFFTImag[k] = -mFFTImag[mirror];
         }
 
-        // Inverse FFT
         fft(mFFTReal.data(), mFFTImag.data(), PV_FFT_SIZE, true);
 
-        // Apply synthesis window and overlap-add with SYNTHESIS hop
+        // Overlap-add with synthesis hop
         int outputStart = frame * hopS;
         for (int k = 0; k < PV_FFT_SIZE; ++k) {
             int outIdx = outputStart + k;
-            if (outIdx < numSamples) {
-                output[outIdx] += mFFTReal[k] * mHannWindow[k];
+            if (outIdx < maxStretchedSamples) {
+                stretchedOut[outIdx] += mFFTReal[k] * mHannWindow[k];
             }
         }
     }
 
-    // Normalize by overlap-add gain
+    // Normalize
     float normGain = 0.0f;
     for (int k = 0; k < PV_FFT_SIZE; ++k)
         normGain += mHannWindow[k] * mHannWindow[k];
-
     if (normGain > 1e-10f) {
         float normFactor = static_cast<float>(hopS) / normGain;
-        for (int i = 0; i < numSamples; ++i)
-            output[i] *= normFactor;
+        int stretchedLen = (numFrames - 1) * hopS + PV_FFT_SIZE;
+        for (int i = 0; i < VC_JMIN(stretchedLen, maxStretchedSamples); ++i)
+            stretchedOut[i] *= normFactor;
+    }
+
+    // Return the length of the stretched signal
+    return (numFrames - 1) * hopS + PV_FFT_SIZE;
+}
+
+//==============================================================================
+// Resample a signal from stretchedLen to numSamples using linear interpolation
+//==============================================================================
+void resample(const float* input, int inputLen, float* output, int outputLen)
+{
+    if (outputLen <= 0 || inputLen <= 0) return;
+
+    float ratio = static_cast<float>(inputLen) / static_cast<float>(outputLen);
+
+    for (int i = 0; i < outputLen; ++i) {
+        float srcPos = static_cast<float>(i) * ratio;
+        int idx0 = static_cast<int>(srcPos);
+        int idx1 = idx0 + 1;
+        float frac = srcPos - static_cast<float>(idx0);
+
+        if (idx0 >= 0 && idx1 < inputLen) {
+            output[i] = input[idx0] * (1.0f - frac) + input[idx1] * frac;
+        } else if (idx0 >= 0 && idx0 < inputLen) {
+            output[i] = input[idx0];
+        } else {
+            output[i] = 0.0f;
+        }
     }
 }
 
@@ -276,16 +297,34 @@ void VCPluginDSP::processInternal(float* left, float* right, int numSamples)
 {
     if (std::abs(mPitchRatio - 1.0f) < 1e-6f) return;
 
+    // Ensure buffers are large enough
+    // Stretched length is approximately numSamples / pitchRatio
+    int maxStretchedLen = static_cast<int>(static_cast<float>(numSamples) / mPitchRatio * 1.5f) + PV_FFT_SIZE;
+    maxStretchedLen = VC_JMAX(maxStretchedLen, numSamples * 2);
+
+    if ((int)mStretchedBuffer[0].size() < maxStretchedLen) {
+        mStretchedBuffer[0].resize(maxStretchedLen);
+        mStretchedBuffer[1].resize(maxStretchedLen);
+    }
     if ((int)mInputCopy[0].size() < numSamples) {
         mInputCopy[0].resize(numSamples);
         mInputCopy[1].resize(numSamples);
     }
 
+    // Copy input
     std::copy(left, left + numSamples, mInputCopy[0].data());
     std::copy(right, right + numSamples, mInputCopy[1].data());
 
-    processChannelPV(mInputCopy[0].data(), left, numSamples, 0);
-    processChannelPV(mInputCopy[1].data(), right, numSamples, 1);
+    // Time-stretch each channel
+    int stretchedLenL = timeStretchChannel(mInputCopy[0].data(), numSamples,
+                                           mStretchedBuffer[0].data(), maxStretchedLen, 0);
+    int stretchedLenR = timeStretchChannel(mInputCopy[1].data(), numSamples,
+                                           mStretchedBuffer[1].data(), maxStretchedLen, 1);
+
+    // Resample from stretched length back to original length
+    // This combines the time-stretch and resample to achieve pitch shift
+    resample(mStretchedBuffer[0].data(), stretchedLenL, left, numSamples);
+    resample(mStretchedBuffer[1].data(), stretchedLenR, right, numSamples);
 }
 
 //==============================================================================
@@ -294,7 +333,6 @@ void VCPluginDSP::reset()
     for (int ch = 0; ch < 2; ++ch) {
         std::fill(mPVState[ch].prevPhase.begin(), mPVState[ch].prevPhase.end(), 0.0f);
         std::fill(mPVState[ch].synthPhase.begin(), mPVState[ch].synthPhase.end(), 0.0f);
-        std::fill(mSpectralEnvelope[ch].begin(), mSpectralEnvelope[ch].end(), 0.0f);
     }
 }
 

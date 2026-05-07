@@ -2,7 +2,6 @@
 
 //==============================================================================
 // VC-PitchShift DSP Core Header - High-Quality Pitch Shifting (Phase Vocoder)
-// Supports both JUCE and Standalone (no dependency) modes
 //==============================================================================
 
 constexpr float VC_PI = 3.14159265358979323846f;
@@ -31,21 +30,14 @@ namespace VCStandalone {
 #define VC_JCLAMP(a, b, c) juce::jlimit(a, b, c)
 #endif
 
-//==============================================================================
-// Phase Vocoder constants
-//==============================================================================
 constexpr int PV_FFT_SIZE   = 2048;
 constexpr int PV_HOP_SIZE   = 512;
 constexpr int PV_FFT_SIZE_2 = PV_FFT_SIZE / 2 + 1;
 
-//==============================================================================
-// Main DSP Class
-//==============================================================================
 class VCPluginDSP
 {
 public:
-    struct Params
-    {
+    struct Params {
         int   semitones = 0;
         float cents     = 0.0f;
         bool  formant   = false;
@@ -57,16 +49,12 @@ public:
 
     void prepare(double sampleRate, int blockSize);
     void process(float* left, float* right, int numSamples);
-
 #ifndef VC_STANDALONE
     void process(juce::dsp::AudioBlock<float>& block);
 #endif
-
     void reset();
-
     void setParams(const Params& p);
     Params getParams() const;
-
     void setEnabled(bool enabled);
     bool isEnabled() const { return mEnabled; }
 
@@ -77,7 +65,6 @@ public:
         return juce::Decibels::decibelsToGain(dB);
 #endif
     }
-
     static float linearToDb(float linear) {
 #ifdef VC_STANDALONE
         return VCStandalone::gainToDecibels(linear);
@@ -85,13 +72,14 @@ public:
         return juce::Decibels::gainToDecibels(linear);
 #endif
     }
-
     double getSampleRate() const { return mSampleRate; }
     int getBlockSize() const { return mBlockSize; }
 
 private:
     void processInternal(float* left, float* right, int numSamples);
-    void processChannelPV(const float* input, float* output, int numSamples, int channel);
+    int timeStretchChannel(const float* input, int numSamples,
+                           float* stretchedOut, int maxStretchedSamples,
+                           int channel);
     void fft(float* real, float* imag, int N, bool inverse);
     void computeHannWindow(float* window, int size);
     void updatePitchRatio();
@@ -111,12 +99,14 @@ private:
     std::vector<float> mHannWindow;
     std::vector<float> mFFTReal;
     std::vector<float> mFFTImag;
-    std::vector<float> mSpectralEnvelope[2];
 
     std::vector<float> mInternalBuffer;
     std::vector<float*> mInternalPtrs;
 
-    // Input copy buffer (for safe in-place processing)
+    // Time-stretched buffer (before resampling)
+    std::vector<float> mStretchedBuffer[2];
+
+    // Input copy buffer
     std::vector<float> mInputCopy[2];
 
     VC_DECLARE_NON_COPYABLE(VCPluginDSP)
