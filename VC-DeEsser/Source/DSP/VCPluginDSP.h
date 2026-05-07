@@ -6,14 +6,15 @@
 // Supports both JUCE and Standalone (no dependency) modes
 //==============================================================================
 
+// Shared constants (available in both JUCE and Standalone modes)
+constexpr float VC_PI = 3.14159265358979323846f;
+
 #ifdef VC_STANDALONE
 // Standalone mode: no JUCE dependency
 #include <vector>
 #include <cmath>
 #include <algorithm>
 
-// Standalone constants
-constexpr float VC_PI = 3.14159265358979323846f;
 
 namespace VCStandalone {
     inline float decibelsToGain(float dB) { return std::pow(10.0f, dB / 20.0f); }
@@ -32,7 +33,7 @@ namespace VCStandalone {
 #define VC_DECLARE_NON_COPYABLE(x) JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(x)
 #define VC_JMIN(a, b) juce::jmin(a, b)
 #define VC_JMAX(a, b) juce::jmax(a, b)
-#define VC_JCLAMP(a, b, c) juce::jclamp(a, b, c)
+#define VC_JCLAMP(a, b, c) juce::jlimit(a, b, c)
 #endif
 
 //==============================================================================
@@ -80,6 +81,8 @@ public:
     //==============================================================================
     // Utility functions
     static float dBToLinear(float dB) {
+// Shared constants (available in both JUCE and Standalone modes)
+
 #ifdef VC_STANDALONE
         return VCStandalone::decibelsToGain(dB);
 #else
@@ -88,6 +91,8 @@ public:
     }
 
     static float linearToDb(float linear) {
+// Shared constants (available in both JUCE and Standalone modes)
+
 #ifdef VC_STANDALONE
         return VCStandalone::gainToDecibels(linear);
 #else
