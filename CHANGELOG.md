@@ -109,3 +109,34 @@ All Gen 2 P0 upgrades complete: FDN Reverb + Multiband Comp + Stereo + PitchShif
 ### VC-PitchShift Fixes
 - Inline pitch ratio calculation (removed undefined `updatePitchRatio()` call)
 - Fixed duplicate line in `setParams()`
+
+## v1.4.0 — VC-Tune PSOLA + VC-MultiBand (2025-05-08)
+
+### VC-Tune Gen2: Complete PSOLA + LPC Formant Preservation
+- Full PSOLA engine: analysis markers → pitch modification → OLA synthesis
+- LPC formant extractor (12th-order Linear Predictive Coding)
+- Formant preservation: `--formant-preserve 0-100` (default: 100 = full)
+- Formant shifting: `--formant-shift -12 to +12` semitones
+- Vibrato preservation: `--vibrato-preserve 0-100`
+- Transition smoothing: `--transition-smooth 0-100`
+- New presets: chipmunk, deep, vibrato
+
+### VC-MultiBand: 4-band LR4 Crossover
+- 4-band Linkwitz-Riley crossover (24dB/oct, phase-coherent)
+- Adjustable crossover: --xover1/2/3 (default: 120/1k/8kHz)
+- Per-band gain: --band-gain
+- Per-band compression: --band-threshold + --band-ratio
+- Solo/Mute per band
+- Perfect reconstruction
+
+### VC-EQ IIR Stability Fix
+- Frequency clamp [20Hz, Nyquist-1Hz]
+- Q clamp [0.1, 100.0]
+- Gain clamp [-60, +60] dB
+- a0 zero-division guard
+- Pole stability check (|a2| >= 1 → passthrough)
+- Denormal prevention
+
+### VC-PitchShift Fix
+- Correct Phase Vocoder: time-stretch then resample algorithm
+- Fix frequency smearing artifacts
