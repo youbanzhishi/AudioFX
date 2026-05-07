@@ -126,12 +126,13 @@ void VCPluginDSP::processInternal(float* left, float* right, int numSamples)
     bool monoBass = mParams.monoBass;
     float bassFreq = mParams.bassFreq;
 
-    // Pan gain using constant-power panning law
-    // panNormalized: -1 (left) to +1 (right)
-    // Map to angle: 0 (left) to pi/2 (right)
-    float panAngle = (panNormalized + 1.0f) * 0.5f * (VC_PI * 0.5f);
-    float panGainL = std::cos(panAngle);
-    float panGainR = std::sin(panAngle);
+    // Pan gain using linear panning law (unity at center)
+    // panNormalized: -1 (full left) to +1 (full right)
+    // At center (0): L=1, R=1
+    // At full left (-1): L=1, R=0
+    // At full right (+1): L=0, R=1
+    float panGainL = VC_JCLAMP(1.0f - panNormalized, 0.0f, 1.0f);
+    float panGainR = VC_JCLAMP(1.0f + panNormalized, 0.0f, 1.0f);
 
     for (int i = 0; i < numSamples; ++i)
     {
