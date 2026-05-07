@@ -1,17 +1,5 @@
 # Changelog
 
-## [2.6.0] - 2026-05-17
-
-### AudioFX v2.6.0 - CLI Negative Argument Parsing Fix for All 25 Plugins
-
-#### Bug Fixes
-- fix: CLI negative argument parsing fix for all 25 plugins (parseArgs corrected to properly handle negative values like --threshold -20)
-- Added isOption() lambda to distinguish between flags and negative numeric values
-- Support for -- separator to stop option parsing
-
-#### Validation
-- VC-Comp/VC-Limiter/VC-Gate/VC-DeEsser negative parameter validation passed
-
 ## [2.5.1] - 2026-05-16
 
 ### AudioFX v2.5.1 - CI VST3 Build Configuration Fix for 7 Plugins

@@ -60,15 +60,27 @@ void printHelp(const char* progName) {
 std::map<std::string, std::string> parseArgs(int argc, char** argv) {
     std::map<std::string, std::string> args;
     std::set<std::string> noValueFlags = {"--help", "-h"};
+    // Phase 19: isOption() distinguishes flags from negative numbers
+    auto isOption = [](const std::string& s) -> bool {
+        if (s.size() < 2) return false;
+        if (s.substr(0, 2) == "--") return true;       // long option: --flag
+        if (s == "-h") return true;                     // short help
+        if (s[0] == '-' && s.size() > 1 && !std::isdigit(static_cast<unsigned char>(s[1]))) return true; // -x
+        return false;  // -20, -3.5 etc. are negative numbers, not options
+    };
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
+        if (arg == "--") break;  // Phase 19: stop option parsing on "--"
         if (arg == "--help" || arg == "-h") {
             args["--help"] = "";
         } else if (arg.substr(0, 2) == "--") {
             std::string key = arg;
             std::string value;
             if (noValueFlags.count(key) == 0 && i + 1 < argc) {
-                value = argv[++i];
+                // Phase 19 fix: only consume next arg as value if it's not another option
+                if (!isOption(argv[i + 1])) {
+                    value = argv[++i];
+                }
             }
             args[key] = value;
         }
@@ -105,11 +117,15 @@ int main(int argc, char** argv) {
     }
 
     // Parse input/output files
+    // Phase 19: smarter file extraction using parseArgs results
+    std::set<std::string> consumedValues;
+    for (const auto& kv : args) { if (!kv.second.empty()) consumedValues.insert(kv.second); }
     std::vector<std::string> files;
     for (int i = 1; i < argc; ++i) {
-        if (argv[i][0] != '-') {
-            files.push_back(argv[i]);
-        }
+        std::string a = argv[i];
+        if (a.substr(0, 2) == "--" || a == "-h") continue;  // skip options
+        if (args.count(a) || consumedValues.count(a)) continue;  // skip consumed args
+        files.push_back(a);
     }
 
     if (files.size() < 2) {

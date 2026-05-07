@@ -96,18 +96,28 @@ void printHelp(const char* progName) {
 //==============================================================================
 std::map<std::string, std::string> parseArgs(int argc, char** argv) {
     std::map<std::string, std::string> args;
-    std::set<std::string> noValueFlags = {"--help", "-h", "--process"};
+    std::set<std::string> noValueFlags = {"--help", "-h"};
+    // Phase 19: isOption() distinguishes flags from negative numbers
+    auto isOption = [](const std::string& s) -> bool {
+        if (s.size() < 2) return false;
+        if (s.substr(0, 2) == "--") return true;       // long option: --flag
+        if (s == "-h") return true;                     // short help
+        if (s[0] == '-' && s.size() > 1 && !std::isdigit(static_cast<unsigned char>(s[1]))) return true; // -x
+        return false;  // -20, -3.5 etc. are negative numbers, not options
+    };
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
+        if (arg == "--") break;  // Phase 19: stop option parsing on "--"
         if (arg == "--help" || arg == "-h") {
             args["--help"] = "";
-        } else if (arg == "--process") {
-            args["--process"] = "";
         } else if (arg.substr(0, 2) == "--") {
             std::string key = arg;
             std::string value;
             if (noValueFlags.count(key) == 0 && i + 1 < argc) {
-                value = argv[++i];
+                // Phase 19 fix: only consume next arg as value if it's not another option
+                if (!isOption(argv[i + 1])) {
+                    value = argv[++i];
+                }
             }
             args[key] = value;
         }
@@ -201,12 +211,16 @@ int main(int argc, char** argv) {
         //======================================================================
         // GENERATE MODE (Gen1 preserved)
         //======================================================================
+        // Phase 19: find output file (skip options and their values)
         std::string outFile;
         for (int i = 1; i < argc; ++i) {
-            if (argv[i][0] != '-') {
-                outFile = argv[i];
-                break;
+            std::string a = argv[i];
+            if (a.substr(0, 2) == "--" || a == "-h") {
+                if (a != "--help" && a != "-h" && i + 1 < argc && std::string(argv[i+1]).substr(0,2) != "--") ++i;
+                continue;
             }
+            outFile = argv[i];
+            break;
         }
         if (outFile.empty()) {
             std::cerr << "Error: Need output file\n\n";
@@ -291,13 +305,17 @@ int main(int argc, char** argv) {
         // PROCESS MODE (Gen2: Noise Profile + Denoise/Gate)
         //======================================================================
         // Parse input and output files
+        // Phase 19: find input/output files (skip options and their values)
         std::string inFile, outFile;
         int fileCount = 0;
         for (int i = 1; i < argc; ++i) {
-            if (argv[i][0] != '-') {
-                if (fileCount == 0) { inFile = argv[i]; fileCount++; }
-                else if (fileCount == 1) { outFile = argv[i]; fileCount++; }
+            std::string a = argv[i];
+            if (a.substr(0, 2) == "--" || a == "-h") {
+                if (a != "--help" && a != "-h" && i + 1 < argc && std::string(argv[i+1]).substr(0,2) != "--") ++i;
+                continue;
             }
+            if (fileCount == 0) { inFile = argv[i]; fileCount++; }
+            else if (fileCount == 1) { outFile = argv[i]; fileCount++; }
         }
 
         if (inFile.empty() || outFile.empty()) {

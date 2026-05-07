@@ -1,27 +1,20 @@
-// VC-Reverb Standalone CLI - No JUCE Dependency
+// VC-Distortion Standalone CLI - No JUCE Dependency
 // Uses dr_wav for WAV I/O
-// Gen 2 FDN (Feedback Delay Network) Reverb
 
-//==============================================================================
-// MUST define VC_STANDALONE before including DSP header
-// MUST include dr_wav implementation before DSP header
-//==============================================================================
 #define DR_WAV_IMPLEMENTATION
-
 #include <dr_wav.h>
 
 #include <iostream>
 #include <string>
 #include <vector>
 #include <map>
-#include <cmath>
 #include <set>
+#include <cmath>
 
-// Include DSP header AFTER DR_WAV_IMPLEMENTATION and VC_STANDALONE
-#include "../DSP/VCPluginDSP.h"
+#include "../DSP/VCDistortionDSP.h"
 
 //==============================================================================
-// VC-Reverb presets (Gen 2 FDN)
+// Presets
 //==============================================================================
 struct Preset {
     const char* name;
@@ -29,35 +22,37 @@ struct Preset {
 };
 
 static const Preset presets[] = {
-    {"bypass",      {50.0f, 50.0f, 50.0f, 20.0f, 30.0f, 8000.0f, 200.0f, false}},
-    {"small-room",  {30.0f, 40.0f, 60.0f, 10.0f, 25.0f, 8000.0f, 200.0f, true}},
-    {"large-hall",  {80.0f, 70.0f, 40.0f, 30.0f, 35.0f, 6000.0f, 150.0f, true}},
-    {"plate",       {60.0f, 55.0f, 30.0f,  5.0f, 40.0f, 10000.0f, 100.0f, true}},
-    {"ambient",     {90.0f, 80.0f, 70.0f, 50.0f, 20.0f, 5000.0f, 250.0f, true}},
-    {"cathedral",   {100.0f, 90.0f, 50.0f, 60.0f, 30.0f, 4000.0f, 120.0f, true}},
+    {"tube-light",    {0, 0.3f, 1.0f, 0.5f, 0.0f, true}},
+    {"tube-drive",    {0, 0.8f, 1.0f, 0.5f, 0.0f, true}},
+    {"tape-saturate", {1, 0.5f, 1.0f, 0.6f, 0.0f, true}},
+    {"transistor",    {2, 0.6f, 1.0f, 0.5f, 0.0f, true}},
+    {"fuzz-heavy",    {3, 0.7f, 1.0f, 0.3f, -6.0f, true}},
+    {"bitcrush-lofi", {4, 0.7f, 1.0f, 0.4f, 0.0f, true}},
 };
 
 //==============================================================================
 // Help text
 //==============================================================================
 void printHelp(const char* progName) {
-    std::cout << "VC-Reverb Standalone CLI (Gen 2 FDN Reverb)\n\n";
-    std::cout << "Architecture: 8-delay-line FDN + Householder matrix + early reflections\n\n";
+    std::cout << "VC-Distortion Standalone CLI\n\n";
     std::cout << "Usage: " << progName << " <input.wav> <output.wav> [options]\n\n";
+    std::cout << "Distortion types:\n";
+    std::cout << "  0=Tube  1=Tape  2=Transistor  3=Fuzz  4=BitCrush\n\n";
     std::cout << "Options:\n";
-    std::cout << "  --help, -h           Show this help\n";
-    std::cout << "  --preset <name>      Preset (bypass, small-room, large-hall, plate, ambient, cathedral)\n";
-    std::cout << "  --room <1-100>       Room size percentage (default: 50)\n";
-    std::cout << "  --decay <1-100>      Decay time percentage (default: 50)\n";
-    std::cout << "  --damping <1-100>    High frequency damping percentage (default: 50)\n";
-    std::cout << "  --predelay <0-200>   Pre-delay in ms (default: 20)\n";
-    std::cout << "  --mix <0-100>        Dry/Wet mix percentage (default: 30)\n";
-    std::cout << "  --wetlpf <1000-16000> Wet signal high-cut freq Hz (default: 8000)\n";
-    std::cout << "  --wethpf <20-500>     Wet signal low-cut freq Hz (default: 200)\n";
-    std::cout << "  --bypass <0|1>       Bypass processing (default: 0)\n\n";
-    std::cout << "Examples:\n";
-    std::cout << "  " << progName << " in.wav out.wav --preset large-hall\n";
-    std::cout << "  " << progName << " in.wav out.wav --room 80 --decay 70 --mix 35\n";
+    std::cout << "  --help              Show this help\n";
+    std::cout << "  --preset <name>     Preset name\n";
+    std::cout << "  --type <0-4>        Distortion type (default: 0)\n";
+    std::cout << "  --drive <0-100>     Drive amount (default: 50)\n";
+    std::cout << "  --mix <0-100>       Dry/Wet mix % (default: 100)\n";
+    std::cout << "  --tone <0-100>      Tone: 0=dark 100=bright (default: 50)\n";
+    std::cout << "  --makeup <-30-30>   Makeup gain in dB (default: 0)\n\n";
+    std::cout << "Presets:\n";
+    for (const auto& p : presets) {
+        std::cout << "  " << p.name << "\n";
+    }
+    std::cout << "\nExamples:\n";
+    std::cout << "  " << progName << " in.wav out.wav --type 0 --drive 80 --mix 75\n";
+    std::cout << "  " << progName << " in.wav out.wav --preset fuzz-heavy\n";
 }
 
 //==============================================================================
@@ -66,27 +61,15 @@ void printHelp(const char* progName) {
 std::map<std::string, std::string> parseArgs(int argc, char** argv) {
     std::map<std::string, std::string> args;
     std::set<std::string> noValueFlags = {"--help", "-h"};
-    // Phase 19: isOption() distinguishes flags from negative numbers
-    auto isOption = [](const std::string& s) -> bool {
-        if (s.size() < 2) return false;
-        if (s.substr(0, 2) == "--") return true;       // long option: --flag
-        if (s == "-h") return true;                     // short help
-        if (s[0] == '-' && s.size() > 1 && !std::isdigit(static_cast<unsigned char>(s[1]))) return true; // -x
-        return false;  // -20, -3.5 etc. are negative numbers, not options
-    };
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
-        if (arg == "--") break;  // Phase 19: stop option parsing on "--"
         if (arg == "--help" || arg == "-h") {
             args["--help"] = "";
         } else if (arg.substr(0, 2) == "--") {
             std::string key = arg;
             std::string value;
             if (noValueFlags.count(key) == 0 && i + 1 < argc) {
-                // Phase 19 fix: only consume next arg as value if it's not another option
-                if (!isOption(argv[i + 1])) {
-                    value = argv[++i];
-                }
+                value = argv[++i];
             }
             args[key] = value;
         }
@@ -123,15 +106,11 @@ int main(int argc, char** argv) {
     }
 
     // Parse input/output files
-    // Phase 19: smarter file extraction using parseArgs results
-    std::set<std::string> consumedValues;
-    for (const auto& kv : args) { if (!kv.second.empty()) consumedValues.insert(kv.second); }
     std::vector<std::string> files;
     for (int i = 1; i < argc; ++i) {
-        std::string a = argv[i];
-        if (a.substr(0, 2) == "--" || a == "-h") continue;  // skip options
-        if (args.count(a) || consumedValues.count(a)) continue;  // skip consumed args
-        files.push_back(a);
+        if (argv[i][0] != '-') {
+            files.push_back(argv[i]);
+        }
     }
 
     if (files.size() < 2) {
@@ -143,7 +122,7 @@ int main(int argc, char** argv) {
     std::string inFile = files[0];
     std::string outFile = files[1];
 
-    std::cout << "VC-Reverb Standalone CLI (Gen 2 FDN Reverb)\n";
+    std::cout << "VC-Distortion Standalone CLI\n";
     std::cout << "Input: " << inFile << "\n";
     std::cout << "Output: " << outFile << "\n";
 
@@ -203,58 +182,46 @@ int main(int argc, char** argv) {
     }
 
     // Override with command line parameters
-    if (args.count("--room")) {
-        params.roomSize = std::stof(args["--room"]);
+    if (args.count("--type")) {
+        params.type = std::stoi(args["--type"]);
+        params.type = std::clamp(params.type, 0, 4);
         dsp.setParams(params);
-        std::cout << "Room size: " << params.roomSize << "%\n";
+        const char* typeNames[] = {"Tube", "Tape", "Transistor", "Fuzz", "BitCrush"};
+        std::cout << "Type: " << typeNames[params.type] << "\n";
     }
 
-    if (args.count("--decay")) {
-        params.decay = std::stof(args["--decay"]);
+    if (args.count("--drive")) {
+        params.drive = std::stof(args["--drive"]) / 100.0f;
+        params.drive = std::clamp(params.drive, 0.0f, 1.0f);
         dsp.setParams(params);
-        std::cout << "Decay: " << params.decay << "%\n";
-    }
-
-    if (args.count("--damping")) {
-        params.damping = std::stof(args["--damping"]);
-        dsp.setParams(params);
-        std::cout << "Damping: " << params.damping << "%\n";
-    }
-
-    if (args.count("--predelay")) {
-        params.preDelay = std::stof(args["--predelay"]);
-        dsp.setParams(params);
-        std::cout << "Pre-delay: " << params.preDelay << " ms\n";
+        std::cout << "Drive: " << (int)(params.drive * 100) << "%\n";
     }
 
     if (args.count("--mix")) {
-        params.mix = std::stof(args["--mix"]);
+        params.mix = std::stof(args["--mix"]) / 100.0f;
+        params.mix = std::clamp(params.mix, 0.0f, 1.0f);
         dsp.setParams(params);
-        std::cout << "Mix: " << params.mix << "%\n";
+        std::cout << "Mix: " << (int)(params.mix * 100) << "%\n";
     }
 
-    if (args.count("--wetlpf")) {
-        params.wetLPF = std::stof(args["--wetlpf"]);
+    if (args.count("--tone")) {
+        params.tone = std::stof(args["--tone"]) / 100.0f;
+        params.tone = std::clamp(params.tone, 0.0f, 1.0f);
         dsp.setParams(params);
-        std::cout << "Wet LPF (high-cut): " << params.wetLPF << " Hz\n";
+        std::cout << "Tone: " << (int)(params.tone * 100) << "%\n";
     }
 
-    if (args.count("--wethpf")) {
-        params.wetHPF = std::stof(args["--wethpf"]);
+    if (args.count("--makeup")) {
+        params.makeup = std::stof(args["--makeup"]);
+        params.makeup = std::clamp(params.makeup, -30.0f, 30.0f);
         dsp.setParams(params);
-        std::cout << "Wet HPF (low-cut): " << params.wetHPF << " Hz\n";
-    }
-
-    if (args.count("--bypass")) {
-        params.enabled = (args["--bypass"] == "1");
-        dsp.setEnabled(params.enabled);
-        std::cout << "Bypass: " << (params.enabled ? "off" : "on") << "\n";
+        std::cout << "Makeup: " << params.makeup << " dB\n";
     }
 
     //==========================================================================
     // Process audio
     //==========================================================================
-    std::cout << "Processing (FDN 8-delay-line + Householder + early reflections)...\n";
+    std::cout << "Processing...\n";
     dsp.process(left.data(), right.data(), static_cast<int>(totalFrames));
 
     //==========================================================================
@@ -265,7 +232,7 @@ int main(int argc, char** argv) {
     format.format = DR_WAVE_FORMAT_IEEE_FLOAT;
     format.channels = channels >= 2 ? 2 : 1;
     format.sampleRate = sampleRate;
-    format.bitsPerSample = 32;  // 32-bit float
+    format.bitsPerSample = 32;
 
     drwav wav;
     if (!drwav_init_file_write(&wav, outFile.c_str(), &format, NULL)) {
