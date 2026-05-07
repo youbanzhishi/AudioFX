@@ -94,3 +94,18 @@
 - Gen1 code backed up as .gen1 files
 
 All Gen 2 P0 upgrades complete: FDN Reverb + Multiband Comp + Stereo + PitchShift
+
+## v1.3.0 — VC-Comp CLI Multiband + VC-PitchShift Fixes (2025-05-07)
+
+### VC-Comp CLI Multiband Parameters
+- `--multiband 0|1` — Enable 4-band multiband mode
+- `--band-threshold dB4` — Per-band threshold (comma-separated)
+- `--band-ratio r4` — Per-band ratio (comma-separated)
+- `--band-makeup dB4` — Per-band makeup gain (comma-separated)
+- `--solo-band 0-4` — Solo a specific band
+- `--xover Hz3` — Crossover frequencies (default: 120,1000,8000)
+- New preset: `multiband-master`
+
+### VC-PitchShift Fixes
+- Inline pitch ratio calculation (removed undefined `updatePitchRatio()` call)
+- Fixed duplicate line in `setParams()`

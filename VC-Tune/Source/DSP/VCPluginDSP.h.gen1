@@ -1,9 +1,8 @@
 #pragma once
 
 //==============================================================================
-// VC-Tune DSP Core Header - Gen2
+// VC-Tune DSP Core Header
 // Pitch Correction / Auto-Tune Plugin
-// Gen2: Full PSOLA + LPC Formant Preservation
 // Supports both JUCE and Standalone (no dependency) modes
 //==============================================================================
 
@@ -50,14 +49,10 @@ public:
     void setThreshold(float t) { mThreshold = t; }
     void setSampleRate(double sr) { mSampleRate = sr; }
 
-    // Gen2: expose period for PSOLA marking
-    float getLastRefinedTau() const { return mLastRefinedTau; }
-
 private:
     double mSampleRate;
     int mBufferSize;
     float mThreshold = 0.15f;
-    float mLastRefinedTau = 0.0f;
     std::vector<float> mD;
     std::vector<float> mDPrime;
 
@@ -101,111 +96,17 @@ private:
 };
 
 //==============================================================================
-// Gen2: LPC Formant Extractor (12th-order Linear Predictive Coding)
-//==============================================================================
-class LPCFormantExtractor
-{
-public:
-    static constexpr int LPC_ORDER = 12;
-
-    LPCFormantExtractor();
-
-    // Analyze one frame and return LPC coefficients (a[0..LPC_ORDER])
-    // a[0] is always 1.0 (convention: A(z) = 1 + a[1]z^-1 + ... + a[P]z^-P)
-    struct LPCResult {
-        float a[LPC_ORDER + 1];  // LPC filter coefficients (a[0]=1.0)
-        float gain;              // Prediction error gain (sigma)
-    };
-
-    LPCResult analyze(const float* frame, int frameSize);
-
-    // Apply inverse filter A(z) to extract excitation signal
-    // excitation[n] = x[n] + a[1]*x[n-1] + ... + a[P]*x[n-P]
-    void inverseFilter(const float* input, int numSamples,
-                       const float* a, float* excitation);
-
-    // Apply synthesis filter 1/A(z) to restore formants
-    // y[n] = excitation[n] - a[1]*y[n-1] - ... - a[P]*y[n-P]
-    void synthesisFilter(const float* excitation, int numSamples,
-                         const float* a, float gain, float* output);
-
-    // Frequency-scale LPC coefficients for formant shifting
-    // shiftSemitones > 0 shifts formants up, < 0 shifts down
-    void shiftFormants(const float* aIn, float shiftSemitones, float sampleRate,
-                       float* aOut);
-
-    void reset();
-
-private:
-    float mAutocorr[LPC_ORDER + 1];
-    float mReflection[LPC_ORDER + 1];
-
-    void autocorrelation(const float* frame, int frameSize);
-};
-
-//==============================================================================
-// Gen2: PSOLA Engine (Pitch Synchronous Overlap and Add)
-//==============================================================================
-class PSOLAEngine
-{
-public:
-    PSOLAEngine(double sampleRate = 44100.0);
-
-    // Main processing: pitch-shift with optional time-stretch
-    // pitchRatios: per-analysis-hop pitch ratio (targetF0 / detectedF0)
-    // formantA: LPC coefficients per analysis frame (or nullptr if no formant preserve)
-    // formantGain: LPC gain per analysis frame
-    struct ProcessParams {
-        const float* input;          // Input signal
-        int numSamples;              // Number of input samples
-        const float* pitchRatios;    // Per-frame pitch ratios
-        int numFrames;               // Number of analysis frames
-        int analysisHop;             // Hop size between frames
-        int frameSize;               // Analysis frame size
-        float speed;                 // Correction speed 0-100
-        float formantPreserve;       // 0-100: formant preservation amount
-        float formantShift;          // -12 to +12 semitones formant shift
-        float vibratoPreserve;       // 0-100: vibrato preservation amount
-        float transitionSmooth;      // 0-100: transition smoothing
-        bool useLPC;                 // Whether to use LPC formant processing
-        const LPCFormantExtractor::LPCResult* lpcResults; // Per-frame LPC (or nullptr)
-    };
-
-    void process(const ProcessParams& params, float* output);
-
-    // Detect pitch marks from YIN analysis
-    // Returns positions of pitch period markers in samples
-    std::vector<int> detectPitchMarks(const float* input, int numSamples,
-                                       YINPitchDetector& detector,
-                                       int frameSize, int hopSize);
-
-    void setSampleRate(double sr) { mSampleRate = sr; }
-    void reset();
-
-private:
-    double mSampleRate;
-
-    // Hanning window for PSOLA analysis frames
-    std::vector<float> mHannWindow;
-    int mLastWindowSize = 0;
-
-    void buildHannWindow(int size);
-};
-
-//==============================================================================
-// Pitch Corrector (Gen2: Full PSOLA + Formant Preservation)
+// Pitch Corrector (Phase 1: Resampling + IIR Smoothing)
 //==============================================================================
 class PitchCorrector
 {
 public:
     PitchCorrector(double sampleRate = 44100.0);
 
-    // Gen2: extended process with new formant/vibrato/smoothing params
     void process(float* left, float* right, int numSamples,
                  YINPitchDetector& detector, ScaleQuantizer& quantizer,
                  float speed, ScaleQuantizer::Scale scale, int keyOffset,
-                 float transpose, float cents, float formantPreserve,
-                 float formantShift, float vibratoPreserve, float transitionSmooth);
+                 float transpose, float cents, float formantPreserve);
 
     void reset();
 
@@ -232,10 +133,6 @@ private:
 
     std::vector<float> mWindow;
     std::vector<FrameInfo> mFrameInfo;
-
-    // Gen2: PSOLA engine and LPC extractor
-    PSOLAEngine mPSOLA;
-    LPCFormantExtractor mLPC;
 
     void rebuildWindow();
 };
@@ -276,7 +173,7 @@ private:
 };
 
 //==============================================================================
-// Main DSP Class: VCTuneDSP (Gen2)
+// Main DSP Class: VCTuneDSP
 //==============================================================================
 class VCTuneDSP
 {
@@ -287,10 +184,7 @@ public:
         int scale = 0;
         float transpose = 0.0f;
         float cents = 0.0f;
-        float formantPreserve = 100.0f;     // Gen2: 0-100 (was 0-1)
-        float formantShift = 0.0f;          // Gen2: -12 to +12 semitones
-        float vibratoPreserve = 0.0f;       // Gen2: 0-100
-        float transitionSmooth = 50.0f;     // Gen2: 0-100
+        float formantPreserve = 1.0f;
         bool bypass = false;
         bool autoKey = false;
     };

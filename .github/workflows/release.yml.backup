@@ -23,14 +23,8 @@ jobs:
             plugin=$(basename "$dir")
             if [ "$plugin" = "VC-Plugin-Template" ]; then continue; fi
             echo "=== Building $plugin ==="
-            # Detect custom DSP filename (Gen1 + Gen2)
-            if [ -f "${dir}Source/DSP/VCEQDSP.cpp" ]; then
-              DSP="VCEQDSP"
-            elif [ -f "${dir}Source/DSP/VCCompDSP.cpp" ]; then
-              DSP="VCCompDSP"
-            elif [ -f "${dir}Source/DSP/VCSmoothDSP.cpp" ]; then
-              DSP="VCSmoothDSP"
-            elif [ -f "${dir}Source/DSP/VCDistortionDSP.cpp" ]; then
+            # Detect custom DSP filename
+            if [ -f "${dir}Source/DSP/VCDistortionDSP.cpp" ]; then
               DSP="VCDistortionDSP"
             elif [ -f "${dir}Source/DSP/VCNoiseDSP.cpp" ]; then
               DSP="VCNoiseDSP"

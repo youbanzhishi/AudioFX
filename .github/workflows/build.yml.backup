@@ -88,52 +88,6 @@ jobs:
             echo "Matrix: $json_arr"
           fi
 
-
-  # ──────────────────────────────────────
-  # 阶段1.5: Gen2插件快速编译验证（g++ standalone，无需JUCE）
-  # 在完整JUCE构建前快速验证Gen2插件能否编译通过
-  # Gen2插件: VC-Stereo, VC-PitchShift, VC-Reverb(FDN升级), VC-Comp(多段压缩升级)
-  # ──────────────────────────────────────
-  gen2-verify:
-    name: Gen2 Compile Verify
-    needs: detect
-    if: needs.detect.outputs.should_build == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Build VC-Stereo (Standalone)
-        shell: bash
-        run: |
-          cd VC-Stereo
-          g++ -std=c++17 -DVC_STANDALONE -O2 -I../Libs/dr_wav \
-            Source/CLI_Standalone/main.cpp Source/DSP/VCPluginDSP.cpp \
-            -o VC-Stereo-CLI-Standalone -lm
-
-      - name: Build VC-PitchShift (Standalone)
-        shell: bash
-        run: |
-          cd VC-PitchShift
-          g++ -std=c++17 -DVC_STANDALONE -O2 -I../Libs/dr_wav \
-            Source/CLI_Standalone/main.cpp Source/DSP/VCPluginDSP.cpp \
-            -o VC-PitchShift-CLI-Standalone -lm
-
-      - name: Build VC-Reverb (Standalone, Gen2 FDN)
-        shell: bash
-        run: |
-          cd VC-Reverb
-          g++ -std=c++17 -DVC_STANDALONE -O2 -I../Libs/dr_wav \
-            Source/CLI_Standalone/main.cpp Source/DSP/VCPluginDSP.cpp \
-            -o VC-Reverb-CLI-Standalone -lm
-
-      - name: Build VC-Comp (Standalone, Gen2 Multi-band)
-        shell: bash
-        run: |
-          cd VC-Comp
-          g++ -std=c++17 -DVC_STANDALONE -O2 -I../Libs/dr_wav \
-            Source/CLI_Standalone/main.cpp Source/DSP/VCCompDSP.cpp \
-            -o VC-Comp-CLI-Standalone -lm
-
   # ──────────────────────────────────────
   # 阶段2: 每个插件 × 每个平台独立构建
   # ──────────────────────────────────────
@@ -224,7 +178,7 @@ jobs:
   # ──────────────────────────────────────
   test:
     name: Test ${{ matrix.plugin }} (3-Tier CLI)
-    needs: [detect, gen2-verify, build]
+    needs: [detect, build]
     if: needs.detect.outputs.should_build == 'true'
     strategy:
       fail-fast: false
@@ -254,10 +208,9 @@ jobs:
         run: |
           cd ${{ matrix.plugin }}
           # Detect DSP filename (some plugins have custom names)
-          # Gen1 plugins (14): VC-EQ, VC-Smooth, VC-Gain, VC-Saturator,
-          #   VC-DeEsser, VC-SurgicalDeEsser, VC-Limiter, VC-Delay,
+          # Gen1 plugins (16): VC-EQ, VC-Comp, VC-Smooth, VC-Gain, VC-Saturator,
+          #   VC-DeEsser, VC-SurgicalDeEsser, VC-Limiter, VC-Delay, VC-Reverb,
           #   VC-DynamicEQ, VC-Distortion, VC-Noise, VC-Tune, VC-Gate, VC-Chorus
-          # Gen2 plugins (4): VC-Stereo, VC-PitchShift, VC-Reverb(FDN升级), VC-Comp(多段压缩升级)
           # Custom DSP filenames: VCEQDSP, VCCompDSP, VCSmoothDSP,
           #   VCDistortionDSP, VCNoiseDSP, VCSurgicalDeEsserDSP
           if [ -f "Source/DSP/VCEQDSP.cpp" ]; then DSP="Source/DSP/VCEQDSP.cpp"
@@ -367,7 +320,7 @@ jobs:
   # ──────────────────────────────────────
   release:
     name: Package & Release
-    needs: [detect, gen2-verify, build, test]
+    needs: [detect, build, test]
     if: needs.detect.outputs.should_build == 'true' && github.event_name == 'workflow_dispatch' && github.event.inputs.publish_release != ''
     runs-on: ubuntu-latest
     steps:
