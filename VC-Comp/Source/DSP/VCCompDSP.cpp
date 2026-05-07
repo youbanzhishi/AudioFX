@@ -75,6 +75,7 @@ void VCCompDSP::process(float* left, float* right, int numSamples)
             auto& proc = mChannels[0];
             
             proc.envelopeFollower.setAttackTime(mParams.attack, mSampleRate);
+            proc.envelopeFollower.setReleaseTime(mParams.release, mSampleRate);
             
             float effectiveRelease = mParams.release;
             
@@ -82,6 +83,7 @@ void VCCompDSP::process(float* left, float* right, int numSamples)
             float envelopeL = proc.envelopeFollower.processSample(detectionL);
             float envelopeR = proc.envelopeFollower.processSample(detectionR);
             float envelope = (envelopeL + envelopeR) * 0.5f;
+            envelope = std::sqrt(envelope);
             
             float envelopeDb = linearToDb(envelope + 1e-10f);
             
@@ -111,6 +113,7 @@ void VCCompDSP::process(float* left, float* right, int numSamples)
         {
             auto& proc = mChannels[1];
             proc.envelopeFollower.setAttackTime(mParams.attack, mSampleRate);
+            proc.envelopeFollower.setReleaseTime(mParams.release, mSampleRate);
             
             float effectiveRelease = mParams.release;
             
@@ -120,6 +123,7 @@ void VCCompDSP::process(float* left, float* right, int numSamples)
             float envelopeL = mChannels[0].envelopeFollower.getEnvelope();
             float envelopeR = proc.envelopeFollower.processSample(detectionR);
             float envelope = (envelopeL + envelopeR) * 0.5f;
+            envelope = std::sqrt(envelope);
             float envelopeDb = linearToDb(envelope + 1e-10f);
             
             float kneeWidth = getKneeWidth(mParams.kneeMode, proc.gainReduction);
