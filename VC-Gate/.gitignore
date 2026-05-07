@@ -1,0 +1,38 @@
+# Build directories
+**/build/
+**/cmake-build-*/
+**/JUCE-build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*~
+*.user
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Compiled
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Artifacts
+*_artefacts/
+*.vst3/
+*.component/
+
+# JUCE
+JUCE/
+
+# Libs (external)
+Libs/
+
+# Test files
+test_*.wav
+*.wav
