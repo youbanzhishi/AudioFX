@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.6.0] - 2026-05-08
+
+### Added
+- VC-Tune Gen2: PSOLA+LPC共振峰保留+formant-preserve/shift+vibrato-preserve+transition-smooth
+- VC-MultiBand: 4频段LR4分频路由器+每段增益/压缩+solo/mute
+- VC-Harmonizer: 智能和声生成(YIN+K-S+4声部+LPC共振峰+gain/pan)
+- VC-NoiseProfile: 谱减降噪(radix-2 FFT+噪声指纹+谱减法+噪声门)
+- CI gen2-verify job扩展到8个Gen2插件
+
+### Fixed
+- VC-Comp Gen2: envelope加sqrt()转线性+每sample调用setReleaseTime
+- VC-EQ IIR: 6项安全钳位(freq/Q/gain/a0/极点/denormal)
+
 ## [1.0.0] — 2025-05-07
 
 ### 🎉 VocalChain Gen 1 Complete — 16 Plugins
@@ -141,32 +154,15 @@ All Gen 2 P0 upgrades complete: FDN Reverb + Multiband Comp + Stereo + PitchShif
 - Correct Phase Vocoder: time-stretch then resample algorithm
 - Fix frequency smearing artifacts
 
-## v1.5.0 (WIP) — Next Release
+## [1.5.0] - 2026-05-08
 
-### In Development
-- VC-Harmonizer: Intelligent harmony generator (3rd/5th/7th/8ve intervals + LPC formant)
-- VC-NoiseProfile: Spectral subtraction noise reduction (learn profile → denoise)
+### Added
+- VC-Harmonizer: Intelligent harmony generator (YIN+K-S+4 voices+LPC formant+gain/pan)
+- VC-NoiseProfile: Spectral subtraction noise reduction (radix-2 FFT+noise fingerprint+spectral subtraction+noise gate)
 - VC-MultiBand CLI presets
-- AudioFX CI: VC-MultiBand + VC-Harmonizer + VC-Tune Gen2 in gen2-verify
+- AudioFX CI: VC-MultiBand+VC-Harmonizer+VC-Tune Gen2 in gen2-verify
 
-## v1.5.0 (WIP) — Gen2 P2 Plugins
-
-### New Plugins
-- **VC-Harmonizer**: Intelligent harmony generator
-  - YIN pitch detection + K-S key detection
-  - 4 harmony voices with configurable intervals
-  - LPC formant preservation (reused from VC-Tune Gen2)
-  - Per-voice gain/pan control
-  - Presets: third-above, fifth-above, choir, low-harmony, octaver
-
-- **VC-NoiseProfile**: Spectral subtraction noise reduction
-  - Learn noise profile from silent segments
-  - Radix-2 FFT (512-point) for spectral analysis
-  - Spectral subtraction with over-subtraction + spectral floor
-  - Noise gate (Gen1 preserved)
-  - Modes: denoise/gate/both/analyze
-
-### Bug Fixes
-- VC-Comp Gen2: envelope sqrt() + setReleaseTime per sample
+### Fixed
+- VC-Comp Gen2: envelope sqrt()+setReleaseTime per sample
 - VC-EQ: IIR coefficient stability (6 safety clamps)
-- VC-PitchShift: Phase Vocoder time-stretch + resample fix
+- VC-PitchShift: Phase Vocoder time-stretch+resample fix

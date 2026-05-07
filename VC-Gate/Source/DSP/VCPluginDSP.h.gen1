@@ -1,15 +1,14 @@
 #pragma once
 
 //==============================================================================
-// VC-Gate DSP Core Header - Noise Gate / Expander (Gen2)
+// VC-Gate DSP Core Header - Noise Gate / Expander
 // Supports both JUCE and Standalone (no dependency) modes
 //
-// Gen2 Upgrades:
-//   1. Sidechain HPF: Filters low-frequency interference from envelope detection
-//   2. Lookahead buffer: 2-5ms lookahead for steeper attack
-//   3. Hysteresis: Separate open/close thresholds to prevent gate chattering
-//   4. Attack-Hold: Hold time after attack before release can begin
-//   5. Range control: Adjustable gate depth (-80=full close, -6=light attenuation)
+// Algorithm: Downward expander with adjustable ratio
+//   - Below threshold: gain = range * (1 - gate_gain)
+//   - Envelope detection via RMS-style follower
+//   - Attack/Hold/Release smoothing for gate gain
+//   - Ratio 1:1 = no processing, higher = more gating
 //==============================================================================
 
 // Shared constants (available in both JUCE and Standalone modes)
@@ -42,101 +41,9 @@ namespace VCStandalone {
 #endif
 
 //==============================================================================
-// Sidechain High-Pass Filter (1st order)
-// Removes low-frequency rumble from the envelope detection path
-//==============================================================================
-class SidechainHPF
-{
-public:
-    SidechainHPF() = default;
-
-    void reset() { x1 = 0.0f; y1 = 0.0f; }
-
-    void setCutoff(float freqHz, float sampleRate)
-    {
-        // 1st order HPF: y[n] = alpha * (y[n-1] + x[n] - x[n-1])
-        // alpha = RC / (RC + T), where RC = 1/(2*pi*fc)
-        if (freqHz <= 0.0f || sampleRate <= 0.0f) {
-            alpha = 1.0f;  // bypass
-            return;
-        }
-        float RC = 1.0f / (2.0f * VC_PI * freqHz);
-        float T = 1.0f / sampleRate;
-        alpha = RC / (RC + T);
-    }
-
-    float processSample(float input)
-    {
-        float output = alpha * (y1 + input - x1);
-        x1 = input;
-        y1 = output;
-        return output;
-    }
-
-private:
-    float alpha = 1.0f;
-    float x1 = 0.0f;  // previous input
-    float y1 = 0.0f;  // previous output
-};
-
-//==============================================================================
-// Lookahead Buffer
-// Stores samples for lookahead processing - allows the gate to "see ahead"
-// and react before transients arrive
-//==============================================================================
-class LookaheadBuffer
-{
-public:
-    LookaheadBuffer() = default;
-
-    void reset()
-    {
-        std::fill(bufferL.begin(), bufferL.end(), 0.0f);
-        std::fill(bufferR.begin(), bufferR.end(), 0.0f);
-        writePos = 0;
-    }
-
-    void prepare(float lookaheadMs, double sampleRate)
-    {
-        // Convert lookahead time to samples
-        int samples = static_cast<int>(lookaheadMs * 0.001f * static_cast<float>(sampleRate));
-        size = VC_JMAX(samples, 1);
-        bufferL.resize(size, 0.0f);
-        bufferR.resize(size, 0.0f);
-        writePos = 0;
-    }
-
-    // Write current input sample, return the delayed sample (lookahead read)
-    void process(float& left, float& right)
-    {
-        // Read from the delayed position
-        float delayedL = bufferL[writePos];
-        float delayedR = bufferR[writePos];
-
-        // Write current input into the ring buffer
-        bufferL[writePos] = left;
-        bufferR[writePos] = right;
-
-        // Advance write position
-        writePos = (writePos + 1) % size;
-
-        // Output the delayed signal
-        left = delayedL;
-        right = delayedR;
-    }
-
-    int getSize() const { return size; }
-
-private:
-    std::vector<float> bufferL;
-    std::vector<float> bufferR;
-    int size = 1;
-    int writePos = 0;
-};
-
-//==============================================================================
 // Envelope Follower for Gate Detection
 // Uses RMS-style squared envelope with separate attack/release
+// NOTE: releaseCoef is initialized in prepare() to avoid the VC-Comp bug
 //==============================================================================
 class GateEnvelopeFollower
 {
@@ -179,27 +86,23 @@ private:
 };
 
 //==============================================================================
-// Main DSP Class (Gen2)
+// Main DSP Class
 //==============================================================================
 class VCPluginDSP
 {
 public:
     //==========================================================================
-    // Plugin-specific parameter structure (Gen2)
+    // Plugin-specific parameter structure
     //==========================================================================
     struct Params
     {
-        float threshold = -40.0f;       // dB (-80 ~ 0) - Gate threshold (close threshold)
-        float ratio = 10.0f;            // Expansion ratio (1 ~ 20)
-        float attack = 1.0f;            // ms (0.1 ~ 50)
-        float hold = 50.0f;             // ms (0 ~ 500)
-        float release = 100.0f;         // ms (10 ~ 2000)
-        float range = -80.0f;           // dB (-80 ~ 0), max attenuation when gate closed
-        float hysteresis = 6.0f;        // dB (0 ~ 20) - Open/close threshold difference
-        float sidechainHpf = 80.0f;     // Hz (0 ~ 500) - Sidechain HPF cutoff
-        float attackHold = 10.0f;       // ms (0 ~ 100) - Hold time after attack
-        float lookahead = 2.0f;         // ms (0 ~ 5) - Lookahead time
-        bool enabled = true;            // Bypass Flag
+        float threshold = -40.0f;   // dB (-80 ~ 0)
+        float ratio = 10.0f;        // Expansion ratio (1 ~ 20)
+        float attack = 1.0f;        // ms (0.1 ~ 50)
+        float hold = 50.0f;         // ms (0 ~ 500)
+        float release = 100.0f;     // ms (10 ~ 2000)
+        float range = -80.0f;       // dB (-80 ~ 0), max attenuation when gate closed
+        bool enabled = true;        // Bypass flag
     };
 
     //==========================================================================
@@ -272,16 +175,9 @@ private:
     // Envelope detection
     GateEnvelopeFollower mEnvelopeFollower;
 
-    // Gen2: Sidechain HPF
-    SidechainHPF mSidechainHPF;
-
-    // Gen2: Lookahead buffer
-    LookaheadBuffer mLookahead;
-
     // Gate state machine
     float mGateGain = 0.0f;        // Current gate gain (0=closed, 1=open)
     int mHoldCounter = 0;          // Samples remaining in hold phase
-    int mAttackHoldCounter = 0;    // Gen2: attack-hold counter
     bool mGateOpen = false;        // Current gate state
 
     // Smoothed gain coefficients

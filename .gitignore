@@ -27,3 +27,7 @@ Thumbs.db
 test_*.wav
 *.backup
 .backups/
+*.bak
+
+# Test audio directory
+test_audio/
