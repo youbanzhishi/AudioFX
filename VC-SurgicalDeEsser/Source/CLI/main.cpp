@@ -12,7 +12,7 @@
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_dsp/juce_dsp.h>
 
-#include "../DSP/VCPluginDSP.h"
+#include "../DSP/VCSurgicalDeEsserDSP.h"
 
 //==============================================================================
 // Plugin-specific presets and parameters

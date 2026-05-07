@@ -9,7 +9,7 @@
 #include <juce_dsp/juce_dsp.h>
 #include <vector>
 
-#include "DSP/VCPluginDSP.h"
+#include "DSP/VCSurgicalDeEsserDSP.h"
 
 //==============================================================================
 // Parameter IDs
