@@ -1,228 +1,90 @@
-# VC-Plugin-Template
+# VC-DynamicEQ
 
-基于 **JUCE 8** + **CMake** 的 VST3 音频插件开发模板。包含完整的 **三层架构**（DSP/CLI/VST3）和 **双 CLI**（JUCE版本 + 零依赖Standalone版本）。
+基于 **JUCE 8** + **CMake** 的动态均衡器 VST3 音频插件。动态EQ结合了EQ和压缩器的特性，当某个频段的能量超过阈值时，动态地增益或衰减该频段。
 
 ## 核心特性
 
+- **动态均衡器**: 当目标频段能量超过阈值时自动应用增益/衰减
+- **静态+动态增益**: 支持固定EQ增益 + 动态增益范围
+- **可调包络跟随器**: Attack/Release时间可调
+- **Dry/Wet混合**: 保留原始信号比例
 - **三层架构**: DSP核心层 → CLI命令行层 → VST3插件层
 - **双CLI支持**: 
-  - `VC-Plugin-CLI`: 使用JUCE读写WAV（需要链接JUCE库）
-  - `VC-Plugin-CLI-Standalone`: 使用dr_wav（零外部依赖）
-- **条件编译**: DSP代码可在JUCE模式和Standalone模式间切换
-- **CI/CD就绪**: 包含GitHub Actions工作流配置
+  - `VC-DynamicEQ-CLI`: 使用JUCE读写WAV
+  - `VC-DynamicEQ-CLI-Standalone`: 使用dr_wav（零外部依赖）
+
+## 参数说明
+
+| 参数 | 范围 | 默认值 | 说明 |
+|------|------|--------|------|
+| Frequency | 20~20000 Hz | 200 Hz | 中心频率 |
+| Gain | -18~+18 dB | -6 dB | 静态增益 |
+| Q | 0.1~10 | 1.0 | Q值（带宽） |
+| Threshold | -48~0 dB | -12 dB | 动态阈值 |
+| Range | -24~+24 dB | -12 dB | 动态范围（负值=衰减，正值=增强） |
+| Attack | 0.1~50 ms | 10 ms | 启动时间 |
+| Release | 10~500 ms | 100 ms | 释放时间 |
+| Mix | 0~100% | 100% | Dry/Wet混合 |
+| Bypass | 0/1 | 0 | 旁通开关 |
+
+## 典型应用
+
+- **去箱声(De-Boom)**: 衰减低频共振
+- **去齿音(De-Harsh)**: 高频动态衰减
+- **存在感增强**: 动态提升特定频段
+
+## 预设
+
+| 预设名 | 应用场景 |
+|--------|----------|
+| bypass | 旁通 |
+| de-boom | 去除低频轰鸣（150Hz，-12dB衰减范围）|
+| de-harsh | 去除高频刺耳（3500Hz，-8dB衰减范围）|
+| presence-boost | 存在感增强（4000Hz，+6dB提升范围）|
 
 ## 目录结构
 
 ```
-VC-Plugin-Template/
-├── CMakeLists.txt                      # 构建配置（3个target）
-├── .gitignore                           # Git忽略规则
-├── README.md                            # 本文件
+VC-DynamicEQ/
+├── CMakeLists.txt
+├── README.md
 ├── Source/
 │   ├── DSP/
-│   │   ├── VCPluginDSP.h               # DSP核心头文件
-│   │   └── VCPluginDSP.cpp             # DSP核心实现
+│   │   ├── VCPluginDSP.h
+│   │   └── VCPluginDSP.cpp
 │   ├── CLI/
-│   │   └── main.cpp                    # JUCE版CLI（依赖JUCE）
+│   │   └── main.cpp
 │   ├── CLI_Standalone/
-│   │   └── main.cpp                    # Standalone版CLI（dr_wav）
-│   ├── PluginProcessor.h               # VST3处理器头文件
-│   ├── PluginProcessor.cpp              # VST3处理器实现
-│   ├── PluginEditor.h                   # VST3编辑器头文件
-│   └── PluginEditor.cpp                # VST3编辑器实现
-└── .github/workflows/                   # CI/CD配置（从根目录同步）
-```
-
-## 快速开始
-
-### 1. 复制模板
-
-```bash
-cd /tmp/AudioFX
-cp -r VC-Plugin-Template VC-MyPlugin
-cd VC-MyPlugin
-```
-
-### 2. 替换占位符
-
-**必须替换的占位符**（在所有`.cpp`和`.h`文件中）：
-
-| 占位符 | 说明 | 示例 |
-|--------|------|------|
-| `VC-DynamicEQ` | 插件名称 | `VC-MyPlugin` |
-| `VCDQ` | 4字符插件代码 | `VCMP` |
-| `VCAU` | 4字符厂商代码 | `VCAU` |
-
-**自动替换命令**：
-
-```bash
-# 定义变量
-PLUGIN_NAME="VC-MyPlugin"
-PLUGIN_CODE="VCMP"
-MANUFACTURER_CODE="VCAU"
-
-# 替换所有占位符
-find . -type f \( -name "*.cpp" -o -name "*.h" -o -name "CMakeLists.txt" \) \
-    -exec sed -i "s/VC-DynamicEQ/${PLUGIN_NAME}/g" {} \;
-find . -type f \( -name "*.cpp" -o -name "*.h" -o -name "CMakeLists.txt" \) \
-    -exec sed -i "s/VCDQ/${PLUGIN_CODE}/g" {} \;
-find . -type f \( -name "*.cpp" -o -name "*.h" -o -name "CMakeLists.txt" \) \
-    -exec sed -i "s/VCAU/${MANUFACTURER_CODE}/g" {} \;
-```
-
-### 3. 实现DSP算法
-
-在 `Source/DSP/VCPluginDSP.h/cpp` 中实现你的DSP算法：
-
-```cpp
-// VCPluginDSP.h - 定义参数结构
-struct Params {
-    float gainDB = 0.0f;      // 修改为你的参数
-    float mix = 100.0f;
-    bool enabled = true;
-};
-
-// VCPluginDSP.cpp - 实现process()或processIIR()
-```
-
-### 4. 编译
-
-#### 方式一：编译所有目标
-
-```bash
-mkdir build && cd build
-cmake .. -DJUCE_PATH=/opt/JUCE -DCMAKE_BUILD_TYPE=Release
-cmake --build . --config Release
-```
-
-#### 方式二：只编译特定目标
-
-```bash
-# 只编译Standalone CLI（最快，无需JUCE依赖）
-mkdir build && cd build
-cmake .. -DJUCE_PATH=/opt/JUCE -DCMAKE_BUILD_TYPE=Release
-cmake --build . --target VC-MyPlugin-CLI-Standalone
-
-# 只编译VST3插件
-cmake --build . --target VC-MyPlugin
+│   │   └── main.cpp
+│   ├── PluginProcessor.h
+│   ├── PluginProcessor.cpp
+│   ├── PluginEditor.h
+│   └── PluginEditor.cpp
 ```
 
 ## 使用CLI
 
-### Standalone CLI（推荐）
+### Standalone CLI（推荐，无需JUCE）
 
 ```bash
-# 基本用法
-./build/CLI_Standalone/VC-MyPlugin-CLI-Standalone input.wav output.wav
-
-# 使用预设
-./build/CLI_Standalone/VC-MyPlugin-CLI-Standalone input.wav output.wav --preset bypass
-
-# 自定义参数
-./build/CLI_Standalone/VC-MyPlugin-CLI-Standalone input.wav output.wav --gain 6.0 --mix 75
-
-# 帮助
-./build/CLI_Standalone/VC-MyPlugin-CLI-Standalone --help
+./build/CLI_Standalone/VC-DynamicEQ-CLI-Standalone input.wav output.wav --preset de-boom
+./build/CLI_Standalone/VC-DynamicEQ-CLI-Standalone input.wav output.wav --frequency 200 --gain -6 --threshold -12
 ```
 
 ### JUCE CLI
 
 ```bash
-./build/CLI/VC-MyPlugin-CLI input.wav output.wav --gain 3.0
-```
-
-## JUCE 8 踩坑经验汇总
-
-### ⚠️ 重要注意事项
-
-1. **inputBuses[] 返回值非引用**
-   ```cpp
-   // ❌ 错误：编译报错
-   auto& inputLayout = layouts.inputBuses[0];
-   
-   // ✅ 正确：按值捕获
-   const auto inputLayout = layouts.inputBuses[0];
-   ```
-
-2. **createWriterFor 需要6个参数**
-   ```cpp
-   // ❌ 错误：只有5个参数
-   writer = wavFmt.createWriterFor(stream, sampleRate, channels, 32, {});
-   
-   // ✅ 正确：6个参数，第5个是StringPairArray，第6个quality传0
-   writer = wavFmt.createWriterFor(stream, sampleRate, channels, 32, {}, 0);
-   ```
-
-3. **metadata 类型是 StringPairArray，不是 StringArray**
-   ```cpp
-   // ❌ 错误：StringArray不是正确类型
-   StringArray metadata;
-   
-   // ✅ 正确：空的大括号会创建StringPairArray
-   writer = wavFmt.createWriterFor(..., {});
-   ```
-
-4. **BusesProperties 必须传基类构造函数**
-   ```cpp
-   // ❌ 错误：局部变量
-   BusesProperties buses;
-   buses.withInput(...);
-   
-   // ✅ 正确：传基类构造函数
-   AudioProcessor(BusesProperties()
-       .withInput("Input", AudioChannelSet::stereo())
-       .withOutput("Output", AudioChannelSet::stereo()))
-   ```
-
-5. **AudioBlock 缓冲区必须非交错布局**
-   ```cpp
-   // ✅ 正确：先复制到非交错缓冲区
-   float* leftBuf = mInternalBuffer.data();
-   float* rightBuf = mInternalBuffer.data() + numSamples;
-   for (int i = 0; i < numSamples; ++i) {
-       leftBuf[i] = left[i];
-       rightBuf[i] = right[i];
-   }
-   juce::dsp::AudioBlock<float> block(mInternalPtrs.data(), 2, numSamples);
-   
-   // ❌ 错误：直接用交错缓冲区假装非交错
-   ```
-
-6. **getInputChannelSet(1) 已在JUCE 8中移除**
-   ```cpp
-   // ❌ 错误：方法不存在
-   layouts.getInputChannelSet(1);
-   
-   // ✅ 正确：使用inputBuses[1]
-   if (layouts.inputBuses.size() > 1) {
-       auto sidechain = layouts.inputBuses[1];
-   }
-   ```
-
-## 条件编译
-
-DSP代码支持JUCE和Standalone两种编译模式：
-
-```cpp
-#ifdef VC_STANDALONE
-// Standalone模式：使用标准库，无JUCE依赖
-#include <vector>
-#include <cmath>
-#else
-// JUCE模式：使用JUCE DSP模块
-#include <juce_dsp/juce_dsp.h>
-#endif
+./build/CLI/VC-DynamicEQ-CLI input.wav output.wav --preset de-harsh
 ```
 
 ## CI/CD
 
-模板已配置GitHub Actions工作流：
+本插件使用GitHub Actions进行自动化构建，支持：
+- macOS (x64 + ARM64)
+- Windows (x64)
+- Ubuntu (x64)
 
-- **多平台构建**: macOS, Windows, Ubuntu
-- **自动化测试**: CLI功能测试
-- **发布管理**: 支持GitHub Release
-
-详见 `.github/workflows/build.yml`（从仓库根目录同步）。
+详见 `.github/workflows/build.yml`。
 
 ## 依赖
 
@@ -230,6 +92,16 @@ DSP代码支持JUCE和Standalone两种编译模式：
 - **CMake 3.22+**
 - **dr_wav**（已包含在 `../Libs/dr_wav/`）
 - 支持VST3的DAW（REAPER, Ableton Live, Cubase等）
+
+## 算法原理
+
+动态EQ的核心算法：
+
+1. **频段检测**: 用带通滤波器提取目标频段能量
+2. **包络跟随**: 根据Attack/Release时间计算包络
+3. **动态增益计算**: 能量超过阈值时，按比例计算额外增益
+4. **均衡处理**: 用Peaking EQ应用静态+动态增益
+5. **Dry/Wet混合**: 混合处理后的信号与原始信号
 
 ## 参考项目
 
