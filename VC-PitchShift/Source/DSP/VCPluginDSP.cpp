@@ -1,12 +1,15 @@
 //==============================================================================
 // VC-PitchShift DSP Core Implementation - Phase Vocoder Pitch Shifting
 //
-// Phase Vocoder algorithm:
-//   1. Input is windowed (Hann) and FFT'd
-//   2. Phase differences between frames are computed and unwrapped
-//   3. Phase increments are scaled by the pitch shift ratio
-//   4. Scaled phases are accumulated for synthesis
-//   5. IFFT and overlap-add produces the output
+// Algorithm:
+//   1. STFT analysis with hop size PV_HOP_SIZE
+//   2. Compute instantaneous frequency via phase unwrapping
+//   3. Scale instantaneous frequencies by pitch ratio
+//   4. Accumulate synthesis phases using scaled frequencies
+//   5. ISTFT synthesis with same hop size (overlap-add)
+//
+// This approach directly scales frequencies in the phase domain,
+// which shifts pitch without changing duration.
 //==============================================================================
 
 #include "VCPluginDSP.h"
@@ -38,28 +41,23 @@ void VCPluginDSP::prepare(double sampleRate, int blockSize)
 
     updatePitchRatio();
 
-    // Allocate PV state per channel
     for (int ch = 0; ch < 2; ++ch) {
         mPVState[ch].prevPhase.resize(PV_FFT_SIZE_2, 0.0f);
         mPVState[ch].synthPhase.resize(PV_FFT_SIZE_2, 0.0f);
         mSpectralEnvelope[ch].resize(PV_FFT_SIZE_2, 0.0f);
     }
 
-    // Compute Hann window
     mHannWindow.resize(PV_FFT_SIZE);
     computeHannWindow(mHannWindow.data(), PV_FFT_SIZE);
 
-    // FFT workspace
     mFFTReal.resize(PV_FFT_SIZE);
     mFFTImag.resize(PV_FFT_SIZE);
 
-    // Internal buffer for AudioBlock conversion
     mInternalBuffer.resize(blockSize * 2);
     mInternalPtrs.resize(2);
     mInternalPtrs[0] = mInternalBuffer.data();
     mInternalPtrs[1] = mInternalBuffer.data() + blockSize;
 
-    // Input copy buffer (for in-place processing safety)
     mInputCopy[0].resize(PV_FFT_SIZE * 4, 0.0f);
     mInputCopy[1].resize(PV_FFT_SIZE * 4, 0.0f);
 }
@@ -144,7 +142,6 @@ void VCPluginDSP::computeHannWindow(float* window, int size)
 //==============================================================================
 void VCPluginDSP::fft(float* real, float* imag, int N, bool inverse)
 {
-    // Bit-reversal permutation
     int j = 0;
     for (int i = 0; i < N - 1; ++i) {
         if (i < j) {
@@ -152,14 +149,10 @@ void VCPluginDSP::fft(float* real, float* imag, int N, bool inverse)
             std::swap(imag[i], imag[j]);
         }
         int k = N >> 1;
-        while (k <= j) {
-            j -= k;
-            k >>= 1;
-        }
+        while (k <= j) { j -= k; k >>= 1; }
         j += k;
     }
 
-    // FFT butterfly
     float dir = inverse ? 1.0f : -1.0f;
     for (int len = 2; len <= N; len <<= 1) {
         float angle = dir * 2.0f * VC_PI / static_cast<float>(len);
@@ -188,7 +181,6 @@ void VCPluginDSP::fft(float* real, float* imag, int N, bool inverse)
         }
     }
 
-    // Scale for inverse FFT
     if (inverse) {
         float invN = 1.0f / static_cast<float>(N);
         for (int i = 0; i < N; ++i) {
@@ -200,7 +192,8 @@ void VCPluginDSP::fft(float* real, float* imag, int N, bool inverse)
 
 //==============================================================================
 // Process one channel through Phase Vocoder
-// IMPORTANT: input and output must be different buffers!
+// Uses frequency-scaling approach: same hop for analysis and synthesis,
+// scale instantaneous frequencies by pitch ratio.
 //==============================================================================
 void VCPluginDSP::processChannelPV(const float* input, float* output, int numSamples, int channel)
 {
@@ -210,25 +203,22 @@ void VCPluginDSP::processChannelPV(const float* input, float* output, int numSam
     float expectedPhaseInc = 2.0f * VC_PI * static_cast<float>(PV_HOP_SIZE)
                            / static_cast<float>(PV_FFT_SIZE);
 
-    // Synthesis hop
-    int synthHop = static_cast<int>(static_cast<float>(PV_HOP_SIZE) / pitchRatio + 0.5f);
-    if (synthHop < 1) synthHop = 1;
-    if (synthHop > PV_FFT_SIZE) synthHop = PV_FFT_SIZE;
-
     float* prevPhase = mPVState[channel].prevPhase.data();
     float* synthPhase = mPVState[channel].synthPhase.data();
 
     // Zero the output
     std::fill(output, output + numSamples, 0.0f);
 
-    // Process the input in overlapping frames
+    // Process the input in overlapping frames (same hop for analysis and synthesis)
+    int hopSize = PV_HOP_SIZE;
+
     int numFrames = 1;
     if (numSamples > PV_FFT_SIZE) {
-        numFrames = (numSamples - PV_FFT_SIZE) / PV_HOP_SIZE + 1;
+        numFrames = (numSamples - PV_FFT_SIZE) / hopSize + 1;
     }
 
     for (int frame = 0; frame < numFrames; ++frame) {
-        int inputStart = frame * PV_HOP_SIZE;
+        int inputStart = frame * hopSize;
 
         // Extract and window the analysis frame
         for (int k = 0; k < PV_FFT_SIZE; ++k) {
@@ -241,8 +231,8 @@ void VCPluginDSP::processChannelPV(const float* input, float* output, int numSam
         // Forward FFT
         fft(mFFTReal.data(), mFFTImag.data(), PV_FFT_SIZE, false);
 
-        // Compute magnitude and phase, process phase vocoder
-        float magnitude[2048 / 2 + 1];  // PV_FFT_SIZE_2 = 1025
+        // Process frequency bins
+        float magnitude[2048 / 2 + 1];  // PV_FFT_SIZE_2
 
         for (int k = 0; k < PV_FFT_SIZE_2; ++k) {
             magnitude[k] = std::sqrt(mFFTReal[k] * mFFTReal[k] + mFFTImag[k] * mFFTImag[k]);
@@ -250,29 +240,30 @@ void VCPluginDSP::processChannelPV(const float* input, float* output, int numSam
 
             // Phase difference and unwrapping
             float phaseDiff = phase - prevPhase[k];
+
+            // Remove expected phase advance for this bin
             phaseDiff -= expectedPhaseInc * static_cast<float>(k);
 
             // Wrap to [-pi, pi]
             while (phaseDiff > VC_PI)  phaseDiff -= 2.0f * VC_PI;
             while (phaseDiff < -VC_PI) phaseDiff += 2.0f * VC_PI;
 
-            // Deviation frequency
-            float devFreq = phaseDiff / (2.0f * VC_PI * static_cast<float>(PV_HOP_SIZE))
-                          * sampleRateF;
-
-            // True frequency
-            float trueFreq = static_cast<float>(k) * binFreq + devFreq;
+            // True instantaneous frequency (deviation from expected)
+            float trueFreq = static_cast<float>(k) * binFreq
+                           + phaseDiff * sampleRateF / (2.0f * VC_PI * static_cast<float>(hopSize));
 
             // Scale frequency for pitch shift
             float synthFreq = trueFreq * pitchRatio;
 
-            // Accumulate synthesis phase
-            synthPhase[k] += 2.0f * VC_PI * synthFreq * static_cast<float>(synthHop) / sampleRateF;
+            // Accumulate synthesis phase using the SAME hop size
+            // This is the key: we accumulate phase based on the scaled frequency
+            // using the analysis hop, which gives us pitch-shifted output
+            synthPhase[k] += 2.0f * VC_PI * synthFreq * static_cast<float>(hopSize) / sampleRateF;
 
             prevPhase[k] = phase;
         }
 
-        // Formant preservation: resample magnitude to preserve spectral envelope
+        // Formant preservation: resample magnitude spectrum
         if (mParams.formant) {
             float savedMag[2048 / 2 + 1];
             for (int k = 0; k < PV_FFT_SIZE_2; ++k) {
@@ -309,8 +300,8 @@ void VCPluginDSP::processChannelPV(const float* input, float* output, int numSam
         // Inverse FFT
         fft(mFFTReal.data(), mFFTImag.data(), PV_FFT_SIZE, true);
 
-        // Apply synthesis window and overlap-add
-        int outputStart = frame * synthHop;
+        // Apply synthesis window and overlap-add (same hop as analysis)
+        int outputStart = frame * hopSize;
         for (int k = 0; k < PV_FFT_SIZE; ++k) {
             int outIdx = outputStart + k;
             if (outIdx < numSamples) {
@@ -319,13 +310,14 @@ void VCPluginDSP::processChannelPV(const float* input, float* output, int numSam
         }
     }
 
-    // Normalize by the overlap-add window gain
+    // Normalize by overlap-add gain (Hann window with 75% overlap)
+    // For Hann window with 75% overlap, the COLA gain is 1.5 * hop
     float normGain = 0.0f;
     for (int k = 0; k < PV_FFT_SIZE; ++k) {
         normGain += mHannWindow[k] * mHannWindow[k];
     }
     if (normGain > 1e-10f) {
-        float normFactor = static_cast<float>(synthHop) / normGain;
+        float normFactor = static_cast<float>(hopSize) / normGain;
         for (int i = 0; i < numSamples; ++i) {
             output[i] *= normFactor;
         }
@@ -337,28 +329,24 @@ void VCPluginDSP::processChannelPV(const float* input, float* output, int numSam
 //==============================================================================
 void VCPluginDSP::processInternal(float* left, float* right, int numSamples)
 {
-    // If pitch ratio is ~1.0, just pass through (no shift needed)
     if (std::abs(mPitchRatio - 1.0f) < 1e-6f) {
-        return;  // Bypass: no shift
+        return;
     }
 
-    // Ensure input copy buffers are large enough
     if ((int)mInputCopy[0].size() < numSamples) {
         mInputCopy[0].resize(numSamples);
         mInputCopy[1].resize(numSamples);
     }
 
-    // Copy input to separate buffers (processChannelPV needs input != output)
     std::copy(left, left + numSamples, mInputCopy[0].data());
     std::copy(right, right + numSamples, mInputCopy[1].data());
 
-    // Process each channel independently using the copies
     processChannelPV(mInputCopy[0].data(), left, numSamples, 0);
     processChannelPV(mInputCopy[1].data(), right, numSamples, 1);
 }
 
 //==============================================================================
-// Reset processing state
+// Reset
 //==============================================================================
 void VCPluginDSP::reset()
 {
@@ -369,26 +357,17 @@ void VCPluginDSP::reset()
     }
 }
 
-//==============================================================================
-// Set parameters
-//==============================================================================
 void VCPluginDSP::setParams(const Params& p)
 {
     mParams = p;
     updatePitchRatio();
 }
 
-//==============================================================================
-// Get parameters
-//==============================================================================
 VCPluginDSP::Params VCPluginDSP::getParams() const
 {
     return mParams;
 }
 
-//==============================================================================
-// Set enabled state
-//==============================================================================
 void VCPluginDSP::setEnabled(bool enabled)
 {
     mEnabled = enabled;

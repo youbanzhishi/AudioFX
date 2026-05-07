@@ -22,3 +22,8 @@ Thumbs.db
 
 # Compiled CLI binaries
 *-CLI-Standalone
+
+# Test WAV files
+test_*.wav
+*.backup
+.backups/
