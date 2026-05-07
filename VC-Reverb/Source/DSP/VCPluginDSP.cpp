@@ -48,14 +48,29 @@ int VCPluginDSP::calcAllpassBufferSize(int baseSize)
 void VCPluginDSP::updateParameters()
 {
     mRoomSizeFactor = mParams.roomSize / 100.0f;
-    mDampingFactor = mParams.damping / 100.0f;
     
-    // Calculate feedback from decay (0-100 -> 0.7-0.98)
+    // Damping: map 0-100% to a subtle range (0.0 to 0.3)
+    // Lower values = less damping (brighter reverb), higher = more damping (darker)
+    mDampingFactor = mParams.damping / 100.0f * 0.3f;
+    
+    // Calculate feedback from decay (0-100 -> 0.5-0.98)
     float decayNormalized = mParams.decay / 100.0f;
-    mDecayFeedback = 0.7f + decayNormalized * 0.28f;
+    mDecayFeedback = 0.5f + decayNormalized * 0.48f;
     
     // Pre-delay in samples
-    mPreDelaySamples = static_cast<int>(mParams.preDelay / 100.0f * MAX_PREDELAY_SAMPLES);
+    mPreDelaySamples = static_cast<int>(mParams.preDelay / 1000.0f * mSampleRate);
+    mPreDelaySamples = VC_JCLAMP(mPreDelaySamples, 0, MAX_PREDELAY_SAMPLES - 1);
+    
+    // Propagate parameter changes to Comb and Allpass filters
+    for (int ch = 0; ch < 2; ++ch) {
+        for (int i = 0; i < 4; ++i) {
+            mCombs[ch][i].setFeedback(mDecayFeedback);
+            mCombs[ch][i].setDamping(mDampingFactor);
+        }
+        for (int i = 0; i < 2; ++i) {
+            mAllpasses[ch][i].setFeedback(0.5f);
+        }
+    }
 }
 
 //==============================================================================
@@ -262,6 +277,7 @@ void VCPluginDSP::setParams(const Params& p)
 {
     mParams = p;
     mEnabled = p.enabled;
+    updateParameters();
 }
 
 //==============================================================================
