@@ -1,0 +1,16 @@
+build/
+JUCE-build/
+*.vst3
+*.component
+*.dll
+*.so
+*.o
+*.obj
+*.a
+*.lib
+.DS_Store
+*.swp
+*~
+VC-NoiseProfile-CLI
+VC-NoiseProfile-CLI-Standalone
+standalone-CLI
