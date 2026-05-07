@@ -140,3 +140,11 @@ All Gen 2 P0 upgrades complete: FDN Reverb + Multiband Comp + Stereo + PitchShif
 ### VC-PitchShift Fix
 - Correct Phase Vocoder: time-stretch then resample algorithm
 - Fix frequency smearing artifacts
+
+## v1.5.0 (WIP) — Next Release
+
+### In Development
+- VC-Harmonizer: Intelligent harmony generator (3rd/5th/7th/8ve intervals + LPC formant)
+- VC-NoiseProfile: Spectral subtraction noise reduction (learn profile → denoise)
+- VC-MultiBand CLI presets
+- AudioFX CI: VC-MultiBand + VC-Harmonizer + VC-Tune Gen2 in gen2-verify
