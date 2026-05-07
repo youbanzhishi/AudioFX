@@ -230,6 +230,7 @@ def tier2_functional(results, plugin_name, cli_path, tmpdir):
         "VC-Delay": test_vc_delay,
         "VC-Reverb": test_vc_reverb,
         "VC-DynamicEQ": test_vc_dynamiceq,
+        "VC-Tune": test_vc_tune,
     }
 
     tester = dispatch.get(plugin_name)
@@ -599,6 +600,145 @@ def test_vc_dynamiceq(results, cli_path, impulse_path, sine_path, multitone_path
         results.fail("VC-DynamicEQ: output has signal",
                       f"peak={db(peak):.2f} dBFS, RMS={rms_val:.2f} dBFS")
 
+
+
+# -- VC-Tune ----------------------------------------------------------------
+
+def _detect_dominant_freq(data, sr):
+    """FFT-based dominant frequency detection in 50-2000 Hz range."""
+    n = len(data)
+    fft = np.fft.rfft(data)
+    freqs = np.fft.rfftfreq(n, 1.0 / sr)
+    mag = np.abs(fft)
+    mask = (freqs >= 50) & (freqs <= 2000)
+    mag_masked = mag.copy()
+    mag_masked[~mask] = 0
+    peak_idx = np.argmax(mag_masked)
+    return freqs[peak_idx]
+
+
+def generate_multifreq_sequence_wav(path, freqs, sr=44100, duration=4.0, amplitude=0.5):
+    """Generate a 2-channel WAV with sequential sine tones (melody)."""
+    n_samples = int(sr * duration)
+    seg_len = n_samples // len(freqs)
+    sig = np.zeros(n_samples, dtype=np.float64)
+    t = np.arange(n_samples, dtype=np.float64) / sr
+    for i, freq in enumerate(freqs):
+        start = i * seg_len
+        end = min(start + seg_len, n_samples)
+        sig[start:end] = np.sin(2.0 * np.pi * freq * t[start:end])
+    sig = (sig * amplitude).astype(np.float32)
+    stereo = np.column_stack([sig, sig])
+    pcm = (stereo * 32767).astype(np.int16)
+    with wave.open(path, "w") as f:
+        f.setnchannels(2)
+        f.setsampwidth(2)
+        f.setframerate(sr)
+        f.writeframes(pcm.tobytes())
+
+
+def test_vc_tune(results, cli_path, impulse_path, sine_path, multitone_path, output_path, tmpdir):
+    """VC-Tune: Pitch correction + auto key detection tests."""
+
+    # --- Pitch Correction: 440Hz Chromatic -> A4 (no change) ---
+    rc, _, _ = run_cli(cli_path, sine_path, output_path, ["--speed", "100", "--scale", "0"])
+    if rc != 0:
+        results.fail("VC-Tune: basic pitch correction run", f"exit={rc}")
+        return
+    sr, data = _safe_read(output_path)
+    freq = _detect_dominant_freq(data[:, 0], sr)
+    if abs(freq - 440.0) < 5.0:
+        results.ok("VC-Tune: 440Hz Chromatic -> A4", f"detected {freq:.1f}Hz")
+    else:
+        results.fail("VC-Tune: 440Hz Chromatic -> A4", f"detected {freq:.1f}Hz, expected ≈440Hz")
+
+    # --- Pitch Correction: 440Hz Minor -> Ab4 ---
+    sine440_minor = os.path.join(tmpdir, "sine440_minor.wav")
+    generate_sine_wav(sine440_minor, freq=440.0, duration=1.0, amplitude=0.5)
+    rc, _, _ = run_cli(cli_path, sine440_minor, output_path, ["--speed", "100", "--scale", "2"])
+    if rc != 0:
+        results.fail("VC-Tune: Minor scale run", f"exit={rc}")
+    else:
+        sr, data = _safe_read(output_path)
+        freq = _detect_dominant_freq(data[:, 0], sr)
+        if abs(freq - 415.3) < 15.0:
+            results.ok("VC-Tune: 440Hz Minor -> Ab4", f"detected {freq:.1f}Hz")
+        else:
+            results.fail("VC-Tune: 440Hz Minor -> Ab4", f"detected {freq:.1f}Hz, expected ≈415Hz")
+
+    # --- Bypass: no change ---
+    sine445 = os.path.join(tmpdir, "sine445.wav")
+    generate_sine_wav(sine445, freq=445.0, duration=1.0, amplitude=0.5)
+    rc, _, _ = run_cli(cli_path, sine445, output_path, ["--bypass", "1"])
+    if rc != 0:
+        results.fail("VC-Tune: bypass run", f"exit={rc}")
+    else:
+        sr, data = _safe_read(output_path)
+        freq = _detect_dominant_freq(data[:, 0], sr)
+        if abs(freq - 445.0) < 5.0:
+            results.ok("VC-Tune: bypass no change", f"detected {freq:.1f}Hz")
+        else:
+            results.fail("VC-Tune: bypass no change", f"detected {freq:.1f}Hz, expected ≈445Hz")
+
+    # --- Speed=0: no correction ---
+    rc, _, _ = run_cli(cli_path, sine445, output_path, ["--speed", "0", "--scale", "0"])
+    if rc != 0:
+        results.fail("VC-Tune: speed=0 run", f"exit={rc}")
+    else:
+        sr, data = _safe_read(output_path)
+        freq = _detect_dominant_freq(data[:, 0], sr)
+        if abs(freq - 445.0) < 5.0:
+            results.ok("VC-Tune: speed=0 no correction", f"detected {freq:.1f}Hz")
+        else:
+            results.fail("VC-Tune: speed=0 no correction", f"detected {freq:.1f}Hz, expected ≈445Hz")
+
+    # --- Transpose +2: 440Hz -> B4 ---
+    rc, _, _ = run_cli(cli_path, sine_path, output_path, ["--speed", "100", "--scale", "0", "--transpose", "2"])
+    if rc != 0:
+        results.fail("VC-Tune: transpose +2 run", f"exit={rc}")
+    else:
+        sr, data = _safe_read(output_path)
+        freq = _detect_dominant_freq(data[:, 0], sr)
+        if abs(freq - 493.88) < 15.0:
+            results.ok("VC-Tune: transpose +2 -> B4", f"detected {freq:.1f}Hz")
+        else:
+            results.fail("VC-Tune: transpose +2 -> B4", f"detected {freq:.1f}Hz, expected ≈494Hz")
+
+    # --- Auto Key Detection: C Major melody ---
+    c_major_notes = [261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 493.88]
+    c_major_wav = os.path.join(tmpdir, "c_major_melody.wav")
+    generate_multifreq_sequence_wav(c_major_wav, c_major_notes, sr=44100, duration=4.0, amplitude=0.5)
+    rc, stdout, _ = run_cli(cli_path, c_major_wav, output_path, ["--autokey", "1", "--speed", "100"])
+    if rc != 0:
+        results.fail("VC-Tune: autokey C Major run", f"exit={rc}")
+    else:
+        if "C Major" in stdout:
+            results.ok("VC-Tune: autokey detects C Major", "Found in output")
+        else:
+            results.fail("VC-Tune: autokey detects C Major", f"stdout: {stdout[-200:]}")
+
+    # --- Report mode ---
+    rc, stdout, _ = run_cli(cli_path, sine_path, output_path, ["--report", "--speed", "100", "--scale", "0"])
+    if rc != 0:
+        results.fail("VC-Tune: report mode run", f"exit={rc}")
+    else:
+        if "Time(ms)" in stdout:
+            results.ok("VC-Tune: report mode produces report", "Found header")
+        else:
+            results.fail("VC-Tune: report mode produces report", "Header not found")
+
+    # --- Presets: T-Pain ---
+    rc, _, _ = run_cli(cli_path, sine_path, output_path, ["--preset", "tpain"])
+    if rc != 0:
+        results.fail("VC-Tune: T-Pain preset", f"exit={rc}")
+    else:
+        sr, data = _safe_read(output_path)
+        if len(data) > 0 and np.max(np.abs(data)) > 0.01:
+            results.ok("VC-Tune: T-Pain preset produces output")
+        else:
+            results.fail("VC-Tune: T-Pain preset produces output", "Silent output")
+
+    _safe_remove(sine440_minor, sine445, c_major_wav)
 
 # ---------------------------------------------------------------------------
 # Tier 3: Effect tests (signal chain sanity)

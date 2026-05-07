@@ -250,6 +250,9 @@ int ScaleQuantizer::quantizeToNote(float frequency, Scale scale, int keyOffset, 
         int candidate = noteInt + offset;
         if (isNoteInScale(candidate, scale, keyOffset)) {
             float dist = std::fabs(static_cast<float>(candidate) - noteFloat);
+            // Slight bias toward lower note (0.02 semitone)
+            // Singers tend to sing sharp, so prefer correcting down
+            if (candidate < noteInt) dist -= 0.02f;
             if (dist < bestDist) {
                 bestDist = dist;
                 bestNote = candidate;
@@ -308,10 +311,7 @@ void PitchCorrector::process(float* left, float* right, int numSamples,
                               float formantPreserve)
 {
     if (numSamples < mFrameSize) return;
-
-    if (mReportMode) {
-        mFrameInfo.clear();
-    }
+    if (mReportMode) { mFrameInfo.clear(); }
 
     // Make copies of input for reading
     std::vector<float> inL(left, left + numSamples);
@@ -320,24 +320,22 @@ void PitchCorrector::process(float* left, float* right, int numSamples,
     //==========================================================================
     // Step 1: Analyze pitch for all frames and build ratio contour
     //==========================================================================
-    int analysisHop = mFrameSize / 2;  // 50% overlap for analysis
-    int numAnalysisFrames = (numSamples - mFrameSize) / analysisHop + 1;
-    std::vector<float> frameRatios(numAnalysisFrames, 1.0f);
-    // Also store frame info for report
-    std::vector<FrameInfo> frameInfos(numAnalysisFrames);
+    int analysisHop = mFrameSize / 2;
+    int numFrames = (numSamples - mFrameSize) / analysisHop + 1;
+    std::vector<float> frameRatios(numFrames, 1.0f);
 
-    for (int f = 0; f < numAnalysisFrames; f++) {
+    for (int f = 0; f < numFrames; f++) {
         int pos = f * analysisHop;
         auto pitch = detector.detect(inL.data() + pos, mFrameSize);
 
         float targetF0 = pitch.frequency;
-        int targetNote = 0;
-        int detectedNote = 0;
+        int targetNote = 0, detectedNote = 0;
 
         if (pitch.voiced && pitch.frequency > 0.0f) {
             detectedNote = ScaleQuantizer::frequencyToNote(pitch.frequency);
             targetF0 = quantizer.quantize(pitch.frequency, scale, keyOffset, transpose, cents);
             targetNote = quantizer.quantizeToNote(pitch.frequency, scale, keyOffset, transpose);
+
         }
 
         float ratio = 1.0f;
@@ -359,27 +357,27 @@ void PitchCorrector::process(float* left, float* right, int numSamples,
         frameRatios[f] = ratio;
 
         if (mReportMode) {
-            frameInfos[f].detectedF0 = pitch.frequency;
-            frameInfos[f].targetF0 = targetF0;
-            frameInfos[f].ratio = ratio;
-            frameInfos[f].confidence = pitch.confidence;
-            frameInfos[f].voiced = pitch.voiced;
-            frameInfos[f].detectedNote = detectedNote;
-            frameInfos[f].targetNote = targetNote;
-            mFrameInfo.push_back(frameInfos[f]);
+            FrameInfo fi;
+            fi.detectedF0 = pitch.frequency;
+            fi.targetF0 = targetF0;
+            fi.ratio = ratio;
+            fi.confidence = pitch.confidence;
+            fi.voiced = pitch.voiced;
+            fi.detectedNote = detectedNote;
+            fi.targetNote = targetNote;
+            mFrameInfo.push_back(fi);
         }
     }
 
     //==========================================================================
-    // Step 2: Build per-sample ratio contour (linear interpolation between frames)
+    // Step 2: Build per-sample ratio contour (linear interpolation)
     //==========================================================================
     std::vector<float> sampleRatios(numSamples, 1.0f);
-    for (int f = 0; f < numAnalysisFrames; f++) {
+    for (int f = 0; f < numFrames; f++) {
         int start = f * analysisHop;
-        int end = (f + 1 < numAnalysisFrames) ? (f + 1) * analysisHop : numSamples;
+        int end = (f + 1 < numFrames) ? (f + 1) * analysisHop : numSamples;
         float r = frameRatios[f];
-        float rNext = (f + 1 < numAnalysisFrames) ? frameRatios[f + 1] : r;
-
+        float rNext = (f + 1 < numFrames) ? frameRatios[f + 1] : r;
         for (int i = start; i < end; i++) {
             float t = static_cast<float>(i - start) / static_cast<float>(end - start);
             sampleRatios[i] = r * (1.0f - t) + rNext * t;
@@ -387,56 +385,53 @@ void PitchCorrector::process(float* left, float* right, int numSamples,
     }
 
     //==========================================================================
-    // Step 3: Apply pitch shift using overlap-add resampling
-    // Uses 75% overlap with Hann window for smooth crossfading
+    // Step 3: Continuous resampler with drift correction
+    //
+    // Instead of OLA (which has phase coherence issues), we use a continuous
+    // resampler that reads through the input at the pitch-shift rate.
+    // To maintain the original duration, we periodically crossfade the read
+    // position back to the "ideal" position.
+    //
+    // For each output sample i:
+    //   - The "ideal" input position is: i * avg_ratio (accumulated)
+    //   - The actual read position advances by ratio per sample
+    //   - At block boundaries, crossfade from actual to ideal position
     //==========================================================================
-    int synthHop = mFrameSize / 4;  // 75% overlap for synthesis
-    std::vector<float> outL(numSamples, 0.0f);
-    std::vector<float> outR(numSamples, 0.0f);
-    std::vector<float> winSum(numSamples, 0.0f);
+    int blockLen = 512;     // ~11.6ms at 44100Hz
+    int cfLen = 64;         // ~1.5ms crossfade for drift correction
 
-    for (int pos = 0; pos + mFrameSize <= numSamples; pos += synthHop) {
-        // Get the average ratio for this synthesis frame
-        float avgRatio = 0.0f;
-        for (int i = 0; i < mFrameSize; i++) {
-            avgRatio += sampleRatios[pos + i];
-        }
-        avgRatio /= mFrameSize;
+    double readPos = 0.0;
+    double idealPos = 0.0;  // Tracks where readPos "should" be
 
-        // Resample: to shift pitch by ratio r, read input at rate r
-        // output[i] = input[pos + i * ratio]
-        // r > 1 → read faster → pitch up
-        // r < 1 → read slower → pitch down
-        for (int i = 0; i < mFrameSize; i++) {
-            float srcPos = static_cast<float>(i) * avgRatio;
-            int idx = static_cast<int>(srcPos);
-            float frac = srcPos - static_cast<float>(idx);
-            int readPos = pos + idx;
-
-            float sampleL = 0.0f, sampleR = 0.0f;
-            if (readPos >= 0 && readPos + 1 < numSamples) {
-                sampleL = inL[readPos] * (1.0f - frac) + inL[readPos + 1] * frac;
-                sampleR = inR[readPos] * (1.0f - frac) + inR[readPos + 1] * frac;
-            } else if (readPos >= 0 && readPos < numSamples) {
-                sampleL = inL[readPos];
-                sampleR = inR[readPos];
-            }
-
-            outL[pos + i] += sampleL * mWindow[i];
-            outR[pos + i] += sampleR * mWindow[i];
-            winSum[pos + i] += mWindow[i];
-        }
-    }
-
-    // Normalize by window sum and write output
     for (int i = 0; i < numSamples; i++) {
-        if (winSum[i] > 1e-6f) {
-            left[i] = outL[i] / winSum[i];
-            right[i] = outR[i] / winSum[i];
-        } else {
-            left[i] = inL[i];
-            right[i] = inR[i];
+        float ratio = sampleRatios[i];
+
+        // Drift correction: at block boundaries, crossfade readPos toward idealPos
+        int posInBlock = i % blockLen;
+        if (posInBlock < cfLen && i >= blockLen) {
+            float t = static_cast<float>(posInBlock) / static_cast<float>(cfLen);
+            // Smoothly transition from readPos to idealPos
+            readPos = readPos * (1.0 - t) + idealPos * t;
         }
+
+        // Read from input at readPos with linear interpolation
+        int idx = static_cast<int>(readPos);
+        float frac = static_cast<float>(readPos) - static_cast<float>(idx);
+
+        if (idx >= 0 && idx + 1 < numSamples) {
+            left[i] = inL[idx] * (1.0f - frac) + inL[idx + 1] * frac;
+            right[i] = inR[idx] * (1.0f - frac) + inR[idx + 1] * frac;
+        } else if (idx >= 0 && idx < numSamples) {
+            left[i] = inL[idx];
+            right[i] = inR[idx];
+        } else {
+            left[i] = 0.0f;
+            right[i] = 0.0f;
+        }
+
+        // Advance positions
+        readPos += ratio;
+        idealPos += ratio;
     }
 }
 
