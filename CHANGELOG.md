@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.5.0] - 2026-05-15
+
+### AudioFX v2.5.0 - All DSP Bugs Fixed, Full Validation Suite Passing
+
+#### Bug Fixes
+- fix: VC-Delay ping-pong stereo routing (alternating tap pan allocation + cross-feedback, stereo separation ratio 0.80)
+- fix: VC-Distortion tube even-order harmonics (asymmetric gain curve, H2=-37.3dB + zero DC offset)
+
+#### Validation
+- DSP validation test suite complete (137 tests, 4 bugs all fixed)
+
+#### Previously Released (v2.4.0)
+- Preset system with batch processing and effect chain CLI
+
 ## [2.4.1] - 2026-05-15
 
 ### AudioFX v2.4.1 - VC-Harmonizer Clipping Fix + VC-Limiter Bypass Fix + DSP Validation Suite
