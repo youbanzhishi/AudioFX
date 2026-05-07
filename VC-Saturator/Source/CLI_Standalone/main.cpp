@@ -15,6 +15,7 @@
 #include <vector>
 #include <map>
 #include <cmath>
+#include <set>
 
 // Include DSP header AFTER DR_WAV_IMPLEMENTATION and VC_STANDALONE
 #include "../DSP/VCPluginDSP.h"
@@ -58,6 +59,7 @@ void printHelp(const char* progName) {
 //==============================================================================
 std::map<std::string, std::string> parseArgs(int argc, char** argv) {
     std::map<std::string, std::string> args;
+    std::set<std::string> noValueFlags = {"--help", "-h"};
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "--help" || arg == "-h") {
@@ -65,7 +67,7 @@ std::map<std::string, std::string> parseArgs(int argc, char** argv) {
         } else if (arg.substr(0, 2) == "--") {
             std::string key = arg;
             std::string value;
-            if (i + 1 < argc && argv[i + 1][0] != '-') {
+            if (noValueFlags.count(key) == 0 && i + 1 < argc) {
                 value = argv[++i];
             }
             args[key] = value;

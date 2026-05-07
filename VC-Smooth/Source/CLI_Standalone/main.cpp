@@ -9,6 +9,7 @@
 #include <vector>
 #include <map>
 #include <cmath>
+#include <set>
 
 // Include DSP header
 #include "../DSP/VCSmoothDSP.h"
@@ -33,6 +34,7 @@ void printHelp(const char* progName) {
 
 std::map<std::string, std::string> parseArgs(int argc, char** argv) {
     std::map<std::string, std::string> args;
+    std::set<std::string> noValueFlags = {"--help", "-h"};
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "--help" || arg == "-h") {
@@ -40,13 +42,26 @@ std::map<std::string, std::string> parseArgs(int argc, char** argv) {
         } else if (arg.substr(0, 2) == "--") {
             std::string key = arg;
             std::string value;
-            if (i + 1 < argc && argv[i + 1][0] != '-') {
+            if (noValueFlags.count(key) == 0 && i + 1 < argc) {
                 value = argv[++i];
             }
             args[key] = value;
         }
     }
     return args;
+}
+
+
+float getFloatArg(const std::map<std::string, std::string>& args, const std::string& key, float defaultVal) {
+    auto it = args.find(key);
+    if (it != args.end() && !it->second.empty()) {
+        try {
+            return std::stof(it->second);
+        } catch (...) {
+            return defaultVal;
+        }
+    }
+    return defaultVal;
 }
 
 int main(int argc, char** argv) {
@@ -74,35 +89,35 @@ int main(int argc, char** argv) {
     VCSmoothDSP::Params params;
     
     if (args.count("--depth")) {
-        params.depth = std::stof(args["--depth"]);
+        params.depth = getFloatArg(args, "--depth", params.depth);
         std::cout << "Depth: " << params.depth << "\n";
     }
     if (args.count("--speed")) {
-        params.speed = std::stof(args["--speed"]);
+        params.speed = getFloatArg(args, "--speed", params.speed);
         std::cout << "Speed: " << params.speed << "\n";
     }
     if (args.count("--freq-low")) {
-        params.freqLow = std::stof(args["--freq-low"]);
+        params.freqLow = getFloatArg(args, "--freq-low", params.freqLow);
         std::cout << "Freq Low: " << params.freqLow << " Hz\n";
     }
     if (args.count("--freq-high")) {
-        params.freqHigh = std::stof(args["--freq-high"]);
+        params.freqHigh = getFloatArg(args, "--freq-high", params.freqHigh);
         std::cout << "Freq High: " << params.freqHigh << " Hz\n";
     }
     if (args.count("--sharpness")) {
-        params.sharpness = std::stof(args["--sharpness"]);
+        params.sharpness = getFloatArg(args, "--sharpness", params.sharpness);
         std::cout << "Sharpness: " << params.sharpness << "\n";
     }
     if (args.count("--mix")) {
-        params.mix = std::stof(args["--mix"]);
+        params.mix = getFloatArg(args, "--mix", params.mix);
         std::cout << "Mix: " << params.mix << "\n";
     }
     if (args.count("--input-gain")) {
-        params.inputGain = std::stof(args["--input-gain"]);
+        params.inputGain = getFloatArg(args, "--input-gain", params.inputGain);
         std::cout << "Input Gain: " << params.inputGain << " dB\n";
     }
     if (args.count("--output-gain")) {
-        params.outputGain = std::stof(args["--output-gain"]);
+        params.outputGain = getFloatArg(args, "--output-gain", params.outputGain);
         std::cout << "Output Gain: " << params.outputGain << " dB\n";
     }
     

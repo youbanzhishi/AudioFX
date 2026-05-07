@@ -9,6 +9,7 @@
 #include <vector>
 #include <map>
 #include <cmath>
+#include <set>
 
 // Include DSP header (must come before JUCE headers in normal mode)
 #include "../DSP/VCEQDSP.h"
@@ -42,6 +43,7 @@ void printHelp(const char* progName) {
 
 std::map<std::string, std::string> parseArgs(int argc, char** argv) {
     std::map<std::string, std::string> args;
+    std::set<std::string> noValueFlags = {"--help", "-h"};
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "--help" || arg == "-h") {
@@ -49,13 +51,26 @@ std::map<std::string, std::string> parseArgs(int argc, char** argv) {
         } else if (arg.substr(0, 2) == "--") {
             std::string key = arg;
             std::string value;
-            if (i + 1 < argc && argv[i + 1][0] != '-') {
+            if (noValueFlags.count(key) == 0 && i + 1 < argc) {
                 value = argv[++i];
             }
             args[key] = value;
         }
     }
     return args;
+}
+
+
+float getFloatArg(const std::map<std::string, std::string>& args, const std::string& key, float defaultVal) {
+    auto it = args.find(key);
+    if (it != args.end() && !it->second.empty()) {
+        try {
+            return std::stof(it->second);
+        } catch (...) {
+            return defaultVal;
+        }
+    }
+    return defaultVal;
 }
 
 bool buildBandParams(const std::map<std::string, std::string>& args, int idx, VCEQDSP::BandParams& p) {
@@ -68,9 +83,9 @@ bool buildBandParams(const std::map<std::string, std::string>& args, int idx, VC
     p.q = VCEQDSP::kDefaultQ[idx];
     p.gainDB = VCEQDSP::kDefaultGains[idx];
     p.enabled = true;
-    if (args.count(prefix + "-freq")) p.frequency = std::stof(args.at(prefix + "-freq"));
-    if (args.count(prefix + "-gain")) p.gainDB = std::stof(args.at(prefix + "-gain"));
-    if (args.count(prefix + "-q")) p.q = std::stof(args.at(prefix + "-q"));
+    if (args.count(prefix + "-freq")) p.frequency = getFloatArg(args, prefix + "-freq", p.frequency);
+    if (args.count(prefix + "-gain")) p.gainDB = getFloatArg(args, prefix + "-gain", p.gainDB);
+    if (args.count(prefix + "-q")) p.q = getFloatArg(args, prefix + "-q", p.q);
     if (args.count(prefix + "-type")) p.type = static_cast<VCEQDSP::FilterType>(std::stoi(args.at(prefix + "-type")));
     if (args.count(prefix + "-on")) p.enabled = (args.at(prefix + "-on") == "1");
     return true;

@@ -15,6 +15,7 @@
 #include <vector>
 #include <map>
 #include <cmath>
+#include <set>
 
 // Include DSP header AFTER DR_WAV_IMPLEMENTATION and VC_STANDALONE
 #include "../DSP/VCPluginDSP.h"
@@ -58,6 +59,7 @@ void printHelp(const char* progName) {
 //==============================================================================
 std::map<std::string, std::string> parseArgs(int argc, char** argv) {
     std::map<std::string, std::string> args;
+    std::set<std::string> noValueFlags = {"--help", "-h"};
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "--help" || arg == "-h") {
@@ -65,7 +67,7 @@ std::map<std::string, std::string> parseArgs(int argc, char** argv) {
         } else if (arg.substr(0, 2) == "--") {
             std::string key = arg;
             std::string value;
-            if (i + 1 < argc && argv[i + 1][0] != '-') {
+            if (noValueFlags.count(key) == 0 && i + 1 < argc) {
                 value = argv[++i];
             }
             args[key] = value;
@@ -85,6 +87,19 @@ bool loadPreset(const std::string& name, VCDeEsserDSP::Params& p) {
         }
     }
     return false;
+}
+
+
+float getFloatArg(const std::map<std::string, std::string>& args, const std::string& key, float defaultVal) {
+    auto it = args.find(key);
+    if (it != args.end() && !it->second.empty()) {
+        try {
+            return std::stof(it->second);
+        } catch (...) {
+            return defaultVal;
+        }
+    }
+    return defaultVal;
 }
 
 //==============================================================================
@@ -179,29 +194,17 @@ int main(int argc, char** argv) {
     }
 
     // Override with command line parameters
-    if (args.count("--threshold")) {
-        params.threshold = std::stof(args["--threshold"]);
-        dsp.setParams(params);
-        std::cout << "Threshold: " << params.threshold << " dB\n";
-    }
+    params.threshold = getFloatArg(args, "--threshold", params.threshold);
+    if (args.count("--threshold")) { dsp.setParams(params); std::cout << "Threshold: " << params.threshold << " dB\n"; }
 
-    if (args.count("--frequency")) {
-        params.frequency = std::stof(args["--frequency"]);
-        dsp.setParams(params);
-        std::cout << "Frequency: " << params.frequency << " Hz\n";
-    }
+    params.frequency = getFloatArg(args, "--frequency", params.frequency);
+    if (args.count("--frequency")) { dsp.setParams(params); std::cout << "Frequency: " << params.frequency << " Hz\n"; }
 
-    if (args.count("--reduction")) {
-        params.reduction = std::stof(args["--reduction"]);
-        dsp.setParams(params);
-        std::cout << "Reduction: " << params.reduction << " dB\n";
-    }
+    params.reduction = getFloatArg(args, "--reduction", params.reduction);
+    if (args.count("--reduction")) { dsp.setParams(params); std::cout << "Reduction: " << params.reduction << " dB\n"; }
 
-    if (args.count("--mix")) {
-        params.mix = std::stof(args["--mix"]);
-        dsp.setParams(params);
-        std::cout << "Mix: " << params.mix << "%\n";
-    }
+    params.mix = getFloatArg(args, "--mix", params.mix);
+    if (args.count("--mix")) { dsp.setParams(params); std::cout << "Mix: " << params.mix << "%\n"; }
 
     if (args.count("--bypass")) {
         params.enabled = (args["--bypass"] == "1");

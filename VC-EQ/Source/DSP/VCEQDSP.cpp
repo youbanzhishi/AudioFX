@@ -196,28 +196,30 @@ void VCEQDSP::updateIIRCoefficients(int band, double sampleRate)
     {
         case FilterType::LowShelf:
         {
+            // Audio EQ Cookbook: A = 10^(dBgain/40) = sqrt(gainFactor)
             float A = std::sqrt(gainFactor);
-            float sqrtA_alpha = 2.0f * A * alpha;
-            state.b0 = A * ((A + 1.0f) - (A - 1.0f) * cosOmega);
+            float two_sqrtA_alpha = 2.0f * std::sqrt(A) * alpha;
+            state.b0 = A * ((A + 1.0f) - (A - 1.0f) * cosOmega + two_sqrtA_alpha);
             state.b1 = 2.0f * A * ((A - 1.0f) - (A + 1.0f) * cosOmega);
-            state.b2 = A * ((A + 1.0f) - (A - 1.0f) * cosOmega);
-            float a0 = (A + 1.0f) + (A - 1.0f) * cosOmega + sqrtA_alpha;
+            state.b2 = A * ((A + 1.0f) - (A - 1.0f) * cosOmega - two_sqrtA_alpha);
+            float a0 = (A + 1.0f) + (A - 1.0f) * cosOmega + two_sqrtA_alpha;
             state.a1 = -2.0f * ((A - 1.0f) + (A + 1.0f) * cosOmega);
-            state.a2 = (A + 1.0f) + (A - 1.0f) * cosOmega - sqrtA_alpha;
+            state.a2 = (A + 1.0f) + (A - 1.0f) * cosOmega - two_sqrtA_alpha;
             state.b0 /= a0; state.b1 /= a0; state.b2 /= a0;
             state.a1 /= a0; state.a2 /= a0;
             break;
         }
         case FilterType::HighShelf:
         {
+            // Audio EQ Cookbook: A = 10^(dBgain/40) = sqrt(gainFactor)
             float A = std::sqrt(gainFactor);
-            float sqrtA_alpha = 2.0f * A * alpha;
-            state.b0 = A * ((A + 1.0f) + (A - 1.0f) * cosOmega);
+            float two_sqrtA_alpha = 2.0f * std::sqrt(A) * alpha;
+            state.b0 = A * ((A + 1.0f) + (A - 1.0f) * cosOmega + two_sqrtA_alpha);
             state.b1 = -2.0f * A * ((A - 1.0f) + (A + 1.0f) * cosOmega);
-            state.b2 = A * ((A + 1.0f) + (A - 1.0f) * cosOmega);
-            float a0 = (A + 1.0f) - (A - 1.0f) * cosOmega + sqrtA_alpha;
+            state.b2 = A * ((A + 1.0f) + (A - 1.0f) * cosOmega - two_sqrtA_alpha);
+            float a0 = (A + 1.0f) - (A - 1.0f) * cosOmega + two_sqrtA_alpha;
             state.a1 = 2.0f * ((A - 1.0f) - (A + 1.0f) * cosOmega);
-            state.a2 = (A + 1.0f) - (A - 1.0f) * cosOmega - sqrtA_alpha;
+            state.a2 = (A + 1.0f) - (A - 1.0f) * cosOmega - two_sqrtA_alpha;
             state.b0 /= a0; state.b1 /= a0; state.b2 /= a0;
             state.a1 /= a0; state.a2 /= a0;
             break;
@@ -225,12 +227,14 @@ void VCEQDSP::updateIIRCoefficients(int band, double sampleRate)
         case FilterType::Parametric:
         default:
         {
-            state.b0 = 1.0f + alpha * gainFactor;
+            // Audio EQ Cookbook: A = 10^(dBgain/40) = sqrt(gainFactor)
+            float A = std::sqrt(gainFactor);
+            state.b0 = 1.0f + alpha * A;
             state.b1 = -2.0f * cosOmega;
-            state.b2 = 1.0f - alpha * gainFactor;
-            float a0 = 1.0f + alpha;
+            state.b2 = 1.0f - alpha * A;
+            float a0 = 1.0f + alpha / A;
             state.a1 = -2.0f * cosOmega;
-            state.a2 = 1.0f - alpha;
+            state.a2 = 1.0f - alpha / A;
             state.b0 /= a0; state.b1 /= a0; state.b2 /= a0;
             state.a1 /= a0; state.a2 /= a0;
             break;
