@@ -6,6 +6,7 @@ on:
     paths:
       - 'VC-*/**'
       - '.github/workflows/**'
+      - 'tests/**'
   pull_request:
     branches: [ main ]
   workflow_dispatch:
@@ -170,10 +171,13 @@ jobs:
           retention-days: 30
 
   # ──────────────────────────────────────
-  # 阶段2.5: CLI测试（仅在Linux上运行）
+  # 阶段2.5: 三层CLI测试（仅在Linux上运行）
+  # Tier 1: 可运行性 - CLI不崩溃、输出有效WAV
+  # Tier 2: 功能性 - DSP正确性验证（脉冲/正弦响应分析）
+  # Tier 3: 效果性 - 信号链合理性（RMS/峰值范围检查）
   # ──────────────────────────────────────
   test:
-    name: Test ${{ matrix.plugin }} (CLI)
+    name: Test ${{ matrix.plugin }} (3-Tier CLI)
     needs: [detect, build]
     if: needs.detect.outputs.should_build == 'true'
     strategy:
@@ -196,7 +200,30 @@ jobs:
             libxinerama-dev libxcursor-dev libxcomposite-dev \
             libfreetype6-dev libfontconfig1-dev libgl1-mesa-dev \
             libdbus-1-dev pkg-config sox
+          pip install numpy scipy
 
+      # ── 快速反馈：g++秒编Standalone CLI，跑功能性测试 ──
+      - name: Build Standalone CLI (g++, no JUCE)
+        shell: bash
+        run: |
+          cd ${{ matrix.plugin }}
+          # Detect DSP filename (some plugins have custom names)
+          if [ -f "Source/DSP/VCEQDSP.cpp" ]; then DSP="Source/DSP/VCEQDSP.cpp"
+          elif [ -f "Source/DSP/VCCompDSP.cpp" ]; then DSP="Source/DSP/VCCompDSP.cpp"
+          elif [ -f "Source/DSP/VCSmoothDSP.cpp" ]; then DSP="Source/DSP/VCSmoothDSP.cpp"
+          else DSP="Source/DSP/VCPluginDSP.cpp"; fi
+          echo "DSP file: $DSP"
+          g++ -std=c++17 -DVC_STANDALONE -O2 \
+            -I../Libs/dr_wav \
+            Source/CLI_Standalone/main.cpp $DSP \
+            -o standalone-CLI -lm
+
+      - name: "Tier 2+3: Functional & Effect Tests"
+        shell: bash
+        run: |
+          python3 tests/cli_functional_test.py ${{ matrix.plugin }} ./${{ matrix.plugin }}/standalone-CLI
+
+      # ── 完整JUCE构建 + Tier 1可运行性测试 ──
       - name: Cache JUCE
         id: cache-juce
         uses: actions/cache@v4
@@ -209,7 +236,7 @@ jobs:
         shell: bash
         run: git clone --depth 1 --branch ${{ env.JUCE_VERSION }} https://github.com/juce-framework/JUCE.git
 
-      - name: Build CLI
+      - name: Build JUCE CLI
         shell: bash
         run: |
           mkdir -p ${{ matrix.plugin }}/build
@@ -217,21 +244,15 @@ jobs:
           cmake .. -G Ninja -DJUCE_PATH=../../JUCE -DCMAKE_BUILD_TYPE=Release
           cmake --build . --config Release
 
-      - name: Generate test signal
+      - name: "Tier 1: Runnable Test (JUCE CLI)"
         shell: bash
         run: |
           sox -n test_input.wav synth 3 sine 440 vol 0.5 channels 2
-          echo "Test signal generated"
-          soxi test_input.wav
-
-      - name: Run CLI test (both JUCE and Standalone)
-        shell: bash
-        run: |
+          
           test_cli() {
             local cli_bin=$1
             local label=$2
             echo "=== Testing $label ==="
-            $cli_bin --help || true
             $cli_bin test_input.wav test_output_${label}.wav || {
               echo "$label execution failed"
               return 1
@@ -253,13 +274,13 @@ jobs:
             return 0
           }
           
-          # Test Standalone CLI first (faster, no JUCE runtime)
+          # Test Standalone CLI from JUCE build
           STANDALONE_BIN=$(find ${{ matrix.plugin }}/build -name "${{ matrix.plugin }}-CLI-Standalone" -type f 2>/dev/null | head -1)
           # Test JUCE CLI
           JUCE_BIN=$(find ${{ matrix.plugin }}/build -name "${{ matrix.plugin }}-CLI" -type f 2>/dev/null | head -1)
           
           if [ -z "$STANDALONE_BIN" ] && [ -z "$JUCE_BIN" ]; then
-            echo "No CLI binary found for ${{ matrix.plugin }}, skipping CLI test"
+            echo "No JUCE CLI binary found for ${{ matrix.plugin }}, skipping JUCE CLI test"
             exit 0
           fi
           
@@ -267,7 +288,7 @@ jobs:
           FAILED=0
           
           if [ -n "$STANDALONE_BIN" ]; then
-            if test_cli "$STANDALONE_BIN" "standalone"; then
+            if test_cli "$STANDALONE_BIN" "juce-standalone"; then
               PASSED=$((PASSED + 1))
             else
               FAILED=$((FAILED + 1))
@@ -282,11 +303,10 @@ jobs:
             fi
           fi
           
-          echo "=== CLI Test Summary: $PASSED passed, $FAILED failed ==="
+          echo "=== JUCE CLI Test Summary: $PASSED passed, $FAILED failed ==="
           if [ "$FAILED" -gt 0 ]; then
             exit 1
           fi
-
   # ──────────────────────────────────────
   # 阶段3: 汇总打包 + 发Release
   # ──────────────────────────────────────
