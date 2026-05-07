@@ -1,15 +1,19 @@
 //==============================================================================
-// VC-Gate Standalone CLI - Noise Gate / Downward Expander
+// VC-Gate Standalone CLI - Noise Gate / Downward Expander (Gen2)
 // No JUCE dependency - Uses dr_wav for WAV I/O
 //
-// Parameters:
-//   --threshold  -80~0 dB     Gate threshold (default: -40)
-//   --ratio      1~20         Expansion ratio (default: 10)
-//   --attack     0.1~50 ms    Attack time (default: 1)
-//   --hold       0~500 ms     Hold time (default: 50)
-//   --release    10~2000 ms   Release time (default: 100)
-//   --range      -80~0 dB     Max attenuation when closed (default: -80)
-//   --bypass     0|1          Bypass (default: 0)
+// Gen2 Parameters:
+//   --threshold      -80~0 dB     Gate threshold (default: -40)
+//   --ratio          1~20         Expansion ratio (default: 10)
+//   --attack         0.1~50 ms    Attack time (default: 1)
+//   --hold           0~500 ms     Hold time (default: 50)
+//   --release        10~2000 ms   Release time (default: 100)
+//   --range          -80~0 dB     Max attenuation when closed (default: -80)
+//   --hysteresis     0~20 dB      Open/close threshold difference (default: 6)
+//   --sidechain-hpf  0~500 Hz     Sidechain HPF cutoff (default: 80)
+//   --attack-hold    0~100 ms     Hold after attack (default: 10)
+//   --lookahead      0~5 ms       Lookahead time (default: 2)
+//   --bypass         0|1          Bypass (default: 0)
 //==============================================================================
 
 #define DR_WAV_IMPLEMENTATION
@@ -27,7 +31,7 @@
 #include "../DSP/VCPluginDSP.h"
 
 //==============================================================================
-// Plugin-specific presets
+// Plugin-specific presets (Gen2)
 //==============================================================================
 struct Preset {
     const char* name;
@@ -35,34 +39,38 @@ struct Preset {
 };
 
 static const Preset presets[] = {
-    // name,        threshold, ratio, attack, hold, release, range, enabled
-    {"bypass",      {-40.0f, 10.0f,  1.0f,  50.0f, 100.0f, -80.0f, false}},
-    {"soft-gate",   {-40.0f,  2.0f,  5.0f, 100.0f, 200.0f, -30.0f, true }},
-    {"hard-gate",   {-50.0f, 20.0f,  0.5f,  10.0f,  50.0f, -80.0f, true }},
-    {"vocal-gate",  {-35.0f, 10.0f,  1.0f,  50.0f, 100.0f, -60.0f, true }},
-    {"expander",    {-30.0f,  3.0f, 10.0f, 100.0f, 300.0f, -40.0f, true }},
-    {"denoise",     {-50.0f, 15.0f,  0.5f,  20.0f,  80.0f, -80.0f, true }},
+    // name,          threshold, ratio, attack, hold,  release, range,  hysteresis, sidechainHpf, attackHold, lookahead, enabled
+    {"bypass",        {-40.0f, 10.0f,  1.0f,  50.0f, 100.0f, -80.0f,  0.0f,   0.0f,   0.0f,  0.0f, false}},
+    {"gentle-gate",   {-40.0f,  3.0f,  5.0f, 100.0f, 200.0f, -30.0f,  3.0f,  80.0f,  20.0f,  1.0f, true }},
+    {"hard-gate",     {-50.0f, 20.0f,  0.5f,  10.0f,  50.0f, -80.0f,  8.0f, 120.0f,   5.0f,  3.0f, true }},
+    {"drum-gate",     {-35.0f, 15.0f,  0.1f,  20.0f,  80.0f, -80.0f,  4.0f, 200.0f,   5.0f,  4.0f, true }},
+    {"vocal-gate",    {-35.0f, 10.0f,  1.0f,  50.0f, 100.0f, -60.0f,  6.0f, 100.0f,  10.0f,  2.0f, true }},
+    {"de-breath",     {-45.0f,  5.0f,  2.0f,  30.0f, 150.0f, -20.0f,  4.0f, 300.0f,  15.0f,  1.0f, true }},
 };
 
 //==============================================================================
 // Help text
 //==============================================================================
 void printHelp(const char* progName) {
-    std::cout << "VC-Gate Standalone CLI - Noise Gate / Downward Expander (No JUCE)\n\n";
+    std::cout << "VC-Gate Standalone CLI - Noise Gate / Downward Expander (Gen2)\n\n";
     std::cout << "Usage: " << progName << " <input.wav> <output.wav> [options]\n\n";
     std::cout << "Options:\n";
-    std::cout << "  --help, -h           Show this help\n";
-    std::cout << "  --preset <name>      Preset (bypass, soft-gate, hard-gate, vocal-gate, expander, denoise)\n";
-    std::cout << "  --threshold <dB>     Gate threshold (-80 ~ 0), default: -40\n";
-    std::cout << "  --ratio <n>          Expansion ratio (1 ~ 20), default: 10\n";
-    std::cout << "  --attack <ms>        Attack time (0.1 ~ 50), default: 1\n";
-    std::cout << "  --hold <ms>          Hold time (0 ~ 500), default: 50\n";
-    std::cout << "  --release <ms>       Release time (10 ~ 2000), default: 100\n";
-    std::cout << "  --range <dB>         Max attenuation when closed (-80 ~ 0), default: -80\n";
-    std::cout << "  --bypass <0|1>       Bypass processing (default: 0)\n\n";
+    std::cout << "  --help, -h              Show this help\n";
+    std::cout << "  --preset <name>         Preset (bypass, gentle-gate, hard-gate, drum-gate, vocal-gate, de-breath)\n";
+    std::cout << "  --threshold <dB>        Gate threshold (-80 ~ 0), default: -40\n";
+    std::cout << "  --ratio <n>             Expansion ratio (1 ~ 20), default: 10\n";
+    std::cout << "  --attack <ms>           Attack time (0.1 ~ 50), default: 1\n";
+    std::cout << "  --hold <ms>             Hold time (0 ~ 500), default: 50\n";
+    std::cout << "  --release <ms>          Release time (10 ~ 2000), default: 100\n";
+    std::cout << "  --range <dB>            Max attenuation when closed (-80 ~ 0), default: -80\n";
+    std::cout << "  --hysteresis <dB>       Open/close threshold difference (0 ~ 20), default: 6\n";
+    std::cout << "  --sidechain-hpf <Hz>    Sidechain HPF cutoff (0 ~ 500), default: 80\n";
+    std::cout << "  --attack-hold <ms>      Hold after attack (0 ~ 100), default: 10\n";
+    std::cout << "  --lookahead <ms>        Lookahead time (0 ~ 5), default: 2\n";
+    std::cout << "  --bypass <0|1>          Bypass processing (default: 0)\n\n";
     std::cout << "Examples:\n";
     std::cout << "  " << progName << " in.wav out.wav --preset vocal-gate\n";
-    std::cout << "  " << progName << " in.wav out.wav --threshold -30 --ratio 5 --release 150\n";
+    std::cout << "  " << progName << " in.wav out.wav --threshold -30 --hysteresis 8 --sidechain-hpf 120\n";
 }
 
 //==============================================================================
@@ -101,14 +109,14 @@ bool loadPreset(const std::string& name, VCPluginDSP::Params& p) {
 }
 
 //==============================================================================
-// Safe float argument parser (uses stof for negative numbers)
+// Safe float argument parser
 //==============================================================================
 float getFloatArg(const std::map<std::string, std::string>& args,
                   const std::string& key, float defaultVal) {
     auto it = args.find(key);
     if (it != args.end() && !it->second.empty()) {
         try {
-            return std::stof(it->second);  // stof handles negative numbers
+            return std::stof(it->second);
         } catch (...) {
             return defaultVal;
         }
@@ -148,7 +156,7 @@ int main(int argc, char** argv) {
     std::string inFile = files[0];
     std::string outFile = files[1];
 
-    std::cout << "VC-Gate Standalone CLI - Noise Gate / Downward Expander\n";
+    std::cout << "VC-Gate Standalone CLI - Noise Gate / Downward Expander (Gen2)\n";
     std::cout << "Input: " << inFile << "\n";
     std::cout << "Output: " << outFile << "\n";
 
@@ -206,13 +214,17 @@ int main(int argc, char** argv) {
         }
     }
 
-    // Override with command line parameters (stof for negative values)
-    params.threshold = getFloatArg(args, "--threshold", params.threshold);
-    params.ratio     = getFloatArg(args, "--ratio",     params.ratio);
-    params.attack    = getFloatArg(args, "--attack",    params.attack);
-    params.hold      = getFloatArg(args, "--hold",      params.hold);
-    params.release   = getFloatArg(args, "--release",   params.release);
-    params.range     = getFloatArg(args, "--range",     params.range);
+    // Override with command line parameters
+    params.threshold    = getFloatArg(args, "--threshold",    params.threshold);
+    params.ratio        = getFloatArg(args, "--ratio",        params.ratio);
+    params.attack       = getFloatArg(args, "--attack",       params.attack);
+    params.hold         = getFloatArg(args, "--hold",         params.hold);
+    params.release      = getFloatArg(args, "--release",      params.release);
+    params.range        = getFloatArg(args, "--range",        params.range);
+    params.hysteresis   = getFloatArg(args, "--hysteresis",   params.hysteresis);
+    params.sidechainHpf = getFloatArg(args, "--sidechain-hpf", params.sidechainHpf);
+    params.attackHold   = getFloatArg(args, "--attack-hold",  params.attackHold);
+    params.lookahead    = getFloatArg(args, "--lookahead",    params.lookahead);
 
     if (args.count("--bypass")) {
         params.enabled = (args["--bypass"] != "1");
@@ -220,13 +232,17 @@ int main(int argc, char** argv) {
 
     // Print settings
     std::cout << "\nParameters:\n";
-    std::cout << "  Threshold: " << params.threshold << " dB\n";
-    std::cout << "  Ratio: " << params.ratio << " :1\n";
-    std::cout << "  Attack: " << params.attack << " ms\n";
-    std::cout << "  Hold: " << params.hold << " ms\n";
-    std::cout << "  Release: " << params.release << " ms\n";
-    std::cout << "  Range: " << params.range << " dB\n";
-    std::cout << "  Bypass: " << (params.enabled ? "off" : "on") << "\n";
+    std::cout << "  Threshold:     " << params.threshold << " dB\n";
+    std::cout << "  Ratio:         " << params.ratio << " :1\n";
+    std::cout << "  Attack:        " << params.attack << " ms\n";
+    std::cout << "  Hold:          " << params.hold << " ms\n";
+    std::cout << "  Release:       " << params.release << " ms\n";
+    std::cout << "  Range:         " << params.range << " dB\n";
+    std::cout << "  Hysteresis:    " << params.hysteresis << " dB\n";
+    std::cout << "  Sidechain HPF: " << params.sidechainHpf << " Hz\n";
+    std::cout << "  Attack-Hold:   " << params.attackHold << " ms\n";
+    std::cout << "  Lookahead:     " << params.lookahead << " ms\n";
+    std::cout << "  Bypass:        " << (params.enabled ? "off" : "on") << "\n";
 
     dsp.setParams(params);
     dsp.setEnabled(params.enabled);
@@ -245,7 +261,7 @@ int main(int argc, char** argv) {
     format.format = DR_WAVE_FORMAT_IEEE_FLOAT;
     format.channels = channels >= 2 ? 2 : 1;
     format.sampleRate = sampleRate;
-    format.bitsPerSample = 32;  // 32-bit float
+    format.bitsPerSample = 32;
 
     drwav wav;
     if (!drwav_init_file_write(&wav, outFile.c_str(), &format, NULL)) {

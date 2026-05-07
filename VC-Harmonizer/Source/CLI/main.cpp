@@ -1,11 +1,16 @@
-// VC-Plugin CLI - JUCE-based Command Line Tool
+// VC-Harmonizer CLI - JUCE-based Command Line Tool
+// Intelligent Harmony Generator
 // Requires JUCE library for WAV I/O
 
 #include <iostream>
 #include <string>
 #include <vector>
 #include <map>
+#include <set>
 #include <cmath>
+#include <algorithm>
+#include <sstream>
+#include <iomanip>
 
 #include <juce_core/juce_core.h>
 #include <juce_audio_basics/juce_audio_basics.h>
@@ -15,36 +20,146 @@
 #include "../DSP/VCPluginDSP.h"
 
 //==============================================================================
-// Plugin-specific presets and parameters
-// TODO: Replace with your plugin's presets
+// Presets
 //==============================================================================
 struct Preset {
     const char* name;
+    const char* description;
     VCPluginDSP::Params params;
 };
 
+static VCPluginDSP::Params makeDefaultParams() {
+    VCPluginDSP::Params p;
+    p.numVoices = 2;
+    p.intervals[0] = 3; p.intervals[1] = 7; p.intervals[2] = 12; p.intervals[3] = -5;
+    p.voiceGain[0] = 0; p.voiceGain[1] = 0; p.voiceGain[2] = 0; p.voiceGain[3] = 0;
+    p.voicePan[0] = -0.5f; p.voicePan[1] = 0.5f; p.voicePan[2] = 0.7f; p.voicePan[3] = -0.7f;
+    p.formantPreserve = 100.0f;
+    p.autoKey = false;
+    p.scale = 0;
+    p.direction = 0;
+    p.bypass = false;
+    p.midiTrack = -1;
+    return p;
+}
+
+static VCPluginDSP::Params makePreset3rd5th() {
+    auto p = makeDefaultParams();
+    p.numVoices = 2;
+    p.intervals[0] = 4;  // major 3rd
+    p.intervals[1] = 7;  // 5th
+    p.voiceGain[0] = -3; p.voiceGain[1] = -6;
+    p.voicePan[0] = -0.4f; p.voicePan[1] = 0.4f;
+    return p;
+}
+
+static VCPluginDSP::Params makePresetChoir() {
+    auto p = makeDefaultParams();
+    p.numVoices = 4;
+    p.intervals[0] = 3; p.intervals[1] = 7; p.intervals[2] = 12; p.intervals[3] = -5;
+    p.voiceGain[0] = -3; p.voiceGain[1] = -6; p.voiceGain[2] = -9; p.voiceGain[3] = -6;
+    p.voicePan[0] = -0.5f; p.voicePan[1] = 0.5f; p.voicePan[2] = 0.7f; p.voicePan[3] = -0.7f;
+    p.formantPreserve = 100.0f;
+    return p;
+}
+
+static VCPluginDSP::Params makePresetOctave() {
+    auto p = makeDefaultParams();
+    p.numVoices = 1;
+    p.intervals[0] = 12;  // octave up
+    p.voiceGain[0] = -3;
+    p.voicePan[0] = 0.0f;
+    return p;
+}
+
+static VCPluginDSP::Params makePresetAutoKey() {
+    auto p = makeDefaultParams();
+    p.numVoices = 2;
+    p.intervals[0] = 4; p.intervals[1] = 7;
+    p.voiceGain[0] = -3; p.voiceGain[1] = -6;
+    p.autoKey = true;
+    p.formantPreserve = 100.0f;
+    return p;
+}
+
+static VCPluginDSP::Params makePresetUpOnly() {
+    auto p = makeDefaultParams();
+    p.numVoices = 3;
+    p.intervals[0] = 3; p.intervals[1] = 7; p.intervals[2] = 12;
+    p.direction = 1;  // up only
+    p.voiceGain[0] = -3; p.voiceGain[1] = -6; p.voiceGain[2] = -9;
+    p.voicePan[0] = -0.3f; p.voicePan[1] = 0.3f; p.voicePan[2] = 0.6f;
+    return p;
+}
+
+static VCPluginDSP::Params makePresetSubHarmonic() {
+    auto p = makeDefaultParams();
+    p.numVoices = 2;
+    p.intervals[0] = -5; p.intervals[1] = -7;
+    p.direction = 2;  // down only
+    p.voiceGain[0] = -3; p.voiceGain[1] = -6;
+    p.voicePan[0] = -0.4f; p.voicePan[1] = 0.4f;
+    p.formantPreserve = 80.0f;
+    return p;
+}
+
 static const Preset presets[] = {
-    {"bypass", {0.0f, 100.0f, false}},
-    {"gain-3db", {3.0f, 100.0f, true}},
-    {"gain-6db", {6.0f, 100.0f, true}},
-    {"half-mix", {0.0f, 50.0f, true}},
+    {"3rd-5th",      "Classic 3rd + 5th harmony",        makePreset3rd5th()},
+    {"choir",        "4-voice choir (3rd+5th+8va-5th)",  makePresetChoir()},
+    {"octave",       "Octave doubler",                    makePresetOctave()},
+    {"autokey",      "Auto key detect + 3rd+5th",        makePresetAutoKey()},
+    {"up-only",      "Upward harmonies only",             makePresetUpOnly()},
+    {"subharmonic",  "Sub-harmonic (5th+7th down)",       makePresetSubHarmonic()},
+    {"bypass",       "No processing",                     makeDefaultParams()},
 };
 
 //==============================================================================
 // Help text
 //==============================================================================
 void printHelp(const char* progName) {
-    std::cout << "VC-Plugin CLI - Audio Plugin Tool\n\n";
+    std::cout << "VC-Harmonizer - Intelligent Harmony Generator\n";
+    std::cout << "  Part of VocalChain Series (VC-Tune / VC-PitchShift / VC-Harmonizer)\n\n";
     std::cout << "Usage: " << progName << " <input.wav> <output.wav> [options]\n\n";
-    std::cout << "Options:\n";
-    std::cout << "  --help, -h           Show this help\n";
-    std::cout << "  --preset <name>      Preset (bypass, gain-3db, gain-6db, half-mix)\n";
-    std::cout << "  --gain <dB>          Gain in dB (default: 0)\n";
-    std::cout << "  --mix <0-100>        Dry/Wet mix percentage (default: 100)\n";
-    std::cout << "  --bypass <0|1>       Bypass processing (default: 0)\n\n";
-    std::cout << "Examples:\n";
-    std::cout << "  " << progName << " in.wav out.wav --preset gain-3db\n";
-    std::cout << "  " << progName << " in.wav out.wav --gain 6.0 --mix 75\n";
+    std::cout << "Harmony Voice Options:\n";
+    std::cout << "  --voices <1-4>              Number of harmony voices [default: 2]\n";
+    std::cout << "  --intervals <3,7,12>        Intervals in semitones, comma-separated [default: 3,7,12,-5]\n";
+    std::cout << "  --voice-gain <dB,...>       Gain per voice in dB [default: 0,0,0,0]\n";
+    std::cout << "  --voice-pan <-1~1,...>      Pan per voice (L=-1, R=+1) [default: -0.5,0.5,0.7,-0.7]\n";
+    std::cout << "  --direction <up|down|both>  Harmony direction [default: both]\n\n";
+    std::cout << "Formant & Scale:\n";
+    std::cout << "  --formant-preserve <0-100>  Formant preservation amount [default: 100]\n";
+    std::cout << "  --autokey <0|1>             Auto-detect musical key [default: 0]\n";
+    std::cout << "  --scale <0-5>               Scale: 0=Chromatic, 1=Major, 2=Minor,\n";
+    std::cout << "                              3=Pentatonic, 4=Blues, 5=Custom [default: 0]\n\n";
+    std::cout << "MIDI Control (placeholder):\n";
+    std::cout << "  --midi-track <num>          MIDI track for VST3 mode (-1=off) [default: -1]\n\n";
+    std::cout << "Other:\n";
+    std::cout << "  --bypass <0|1>              Bypass processing [default: 0]\n";
+    std::cout << "  --preset <name>             Load a preset:\n";
+    for (const auto& p : presets) {
+        std::cout << "                              " << p.name << " - " << p.description << "\n";
+    }
+    std::cout << "\nExamples:\n";
+    std::cout << "  " << progName << " vocal.wav harmony.wav --preset 3rd-5th\n";
+    std::cout << "  " << progName << " vocal.wav harmony.wav --voices 3 --intervals 3,7,12\n";
+    std::cout << "  " << progName << " vocal.wav harmony.wav --autokey 1 --intervals 4,7\n";
+}
+
+//==============================================================================
+// Parse comma-separated values
+//==============================================================================
+std::vector<float> parseCommaValues(const std::string& str) {
+    std::vector<float> values;
+    std::istringstream iss(str);
+    std::string token;
+    while (std::getline(iss, token, ',')) {
+        try {
+            values.push_back(std::stof(token));
+        } catch (...) {
+            std::cerr << "Warning: Cannot parse value '" << token << "'\n";
+        }
+    }
+    return values;
 }
 
 //==============================================================================
@@ -52,6 +167,7 @@ void printHelp(const char* progName) {
 //==============================================================================
 std::map<std::string, std::string> parseArgs(int argc, char** argv) {
     std::map<std::string, std::string> args;
+    std::set<std::string> noValueFlags = {"--help", "-h"};
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "--help" || arg == "-h") {
@@ -59,7 +175,7 @@ std::map<std::string, std::string> parseArgs(int argc, char** argv) {
         } else if (arg.substr(0, 2) == "--") {
             std::string key = arg;
             std::string value;
-            if (i + 1 < argc && argv[i + 1][0] != '-') {
+            if (noValueFlags.count(key) == 0 && i + 1 < argc) {
                 value = argv[++i];
             }
             args[key] = value;
@@ -69,7 +185,7 @@ std::map<std::string, std::string> parseArgs(int argc, char** argv) {
 }
 
 //==============================================================================
-// Load preset by name
+// Load preset
 //==============================================================================
 bool loadPreset(const std::string& name, VCPluginDSP::Params& p) {
     for (const auto& preset : presets) {
@@ -113,8 +229,8 @@ int main(int argc, char** argv) {
     std::string inFile = files[0];
     std::string outFile = files[1];
 
-    std::cout << "VC-Plugin CLI (JUCE Version)\n";
-    std::cout << "Input: " << inFile << "\n";
+    std::cout << "VC-Harmonizer CLI (JUCE Version)\n";
+    std::cout << "Input:  " << inFile << "\n";
     std::cout << "Output: " << outFile << "\n";
 
     //============================================================================
@@ -152,42 +268,81 @@ int main(int argc, char** argv) {
     VCPluginDSP dsp;
     dsp.prepare(reader->sampleRate, 4096);
 
-    VCPluginDSP::Params params;
+    VCPluginDSP::Params params = makeDefaultParams();
 
-    // Load preset if specified
+    // Load preset
     if (args.count("--preset")) {
         std::string presetName = args["--preset"];
-        std::cout << "Preset: " << presetName << "\n";
         if (!loadPreset(presetName, params)) {
-            std::cerr << "Error: Unknown preset\n";
+            std::cerr << "Error: Unknown preset '" << presetName << "'\n";
             return 1;
         }
-        dsp.setParams(params);
+        std::cout << "Preset: " << presetName << "\n";
     }
 
-    // Override with command line parameters
-    if (args.count("--gain")) {
-        params.gainDB = std::stof(args["--gain"]);
-        dsp.setParams(params);
-        std::cout << "Gain: " << params.gainDB << " dB\n";
+    // Override with CLI parameters
+    if (args.count("--voices")) {
+        params.numVoices = std::stoi(args["--voices"]);
+        params.numVoices = std::clamp(params.numVoices, 1, VCPluginDSP::MAX_VOICES);
     }
 
-    if (args.count("--mix")) {
-        params.mix = std::stof(args["--mix"]);
-        dsp.setParams(params);
-        std::cout << "Mix: " << params.mix << "%\n";
+    if (args.count("--intervals")) {
+        auto values = parseCommaValues(args["--intervals"]);
+        for (size_t i = 0; i < values.size() && i < VCPluginDSP::MAX_VOICES; i++) {
+            params.intervals[i] = static_cast<int>(values[i]);
+        }
+    }
+
+    if (args.count("--voice-gain")) {
+        auto values = parseCommaValues(args["--voice-gain"]);
+        for (size_t i = 0; i < values.size() && i < VCPluginDSP::MAX_VOICES; i++) {
+            params.voiceGain[i] = values[i];
+        }
+    }
+
+    if (args.count("--voice-pan")) {
+        auto values = parseCommaValues(args["--voice-pan"]);
+        for (size_t i = 0; i < values.size() && i < VCPluginDSP::MAX_VOICES; i++) {
+            params.voicePan[i] = std::clamp(values[i], -1.0f, 1.0f);
+        }
+    }
+
+    if (args.count("--formant-preserve")) {
+        params.formantPreserve = std::stof(args["--formant-preserve"]);
+        params.formantPreserve = std::clamp(params.formantPreserve, 0.0f, 100.0f);
+    }
+
+    if (args.count("--autokey")) {
+        params.autoKey = (args["--autokey"] == "1");
+    }
+
+    if (args.count("--scale")) {
+        params.scale = std::stoi(args["--scale"]);
+        params.scale = std::clamp(params.scale, 0, 5);
+    }
+
+    if (args.count("--direction")) {
+        std::string dir = args["--direction"];
+        if (dir == "up") params.direction = 1;
+        else if (dir == "down") params.direction = 2;
+        else params.direction = 0;
     }
 
     if (args.count("--bypass")) {
-        params.enabled = (args["--bypass"] == "1");
-        dsp.setEnabled(params.enabled);
-        std::cout << "Bypass: " << (params.enabled ? "off" : "on") << "\n";
+        params.bypass = (args["--bypass"] == "1");
     }
+
+    if (args.count("--midi-track")) {
+        params.midiTrack = std::stoi(args["--midi-track"]);
+    }
+
+    dsp.setParams(params);
+    dsp.setEnabled(!params.bypass);
 
     //============================================================================
     // Process audio
     //============================================================================
-    std::cout << "Processing...\n";
+    std::cout << "\nProcessing...\n";
 
     if (buffer.getNumChannels() >= 2) {
         dsp.process(buffer.getWritePointer(0), buffer.getWritePointer(1),
@@ -195,6 +350,19 @@ int main(int argc, char** argv) {
     } else if (buffer.getNumChannels() == 1) {
         auto* data = buffer.getWritePointer(0);
         dsp.process(data, data, buffer.getNumSamples());
+    }
+
+    // Print key detection result if autoKey
+    if (params.autoKey && dsp.hasKeyDetected()) {
+        auto kr = dsp.getKeyResult();
+        std::cout << "\n--- Key Detection Result ---\n";
+        if (kr.detected) {
+            std::cout << "Detected Key: " << KeyDetector::keyName(kr.key, kr.isMajor) << "\n";
+            std::cout << "Confidence:   " << std::fixed << std::setprecision(3)
+                      << kr.confidence << "\n";
+        } else {
+            std::cout << "Key detection failed (insufficient voiced signal)\n";
+        }
     }
 
     //============================================================================
@@ -222,6 +390,6 @@ int main(int argc, char** argv) {
 
     writer->writeFromAudioSampleBuffer(buffer, 0, buffer.getNumSamples());
 
-    std::cout << "Done! Output: " << outFile << "\n";
+    std::cout << "\nDone! Output: " << outFile << "\n";
     return 0;
 }

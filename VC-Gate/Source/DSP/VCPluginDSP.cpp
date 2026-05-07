@@ -1,15 +1,17 @@
 //==============================================================================
-// VC-Gate DSP Core Implementation - Noise Gate / Downward Expander
+// VC-Gate DSP Core Implementation - Noise Gate / Downward Expander (Gen2)
 //
-// Algorithm overview:
-//   1. RMS envelope follower detects input level
-//   2. Compare envelope (in dB) against threshold
-//   3. If above threshold: gate opens (gain ramps toward 0dB via attack)
-//   4. If below threshold: hold timer starts, then gate closes (gain ramps toward range via release)
-//   5. Expansion: for signals below threshold, gain is computed as:
-//        gain_dB = range * (1 - gate_gain)
-//      where gate_gain is 1.0 (open, no reduction) to 0.0 (closed, full range attenuation)
-//   6. With ratio > 1, the transition is gradual (expander), not a hard switch
+// Gen2 Algorithm overview:
+//   1. Sidechain HPF filters low-frequency rumble from the detection signal
+//   2. RMS envelope follower detects filtered input level
+//   3. Hysteresis: separate open/close thresholds prevent gate chattering
+//      - Open threshold = threshold
+//      - Close threshold = threshold - hysteresis
+//   4. Attack-hold: minimum time the gate stays open after attack
+//   5. Lookahead buffer: delays audio so gate can react before transients
+//   6. Range control: adjustable gate depth
+//   7. Expansion: for signals below threshold, gain is computed as:
+//        gain_dB = range * (1 - gate_gain) * expansionFactor
 //==============================================================================
 
 #include "VCPluginDSP.h"
@@ -24,7 +26,6 @@
 //==============================================================================
 VCPluginDSP::VCPluginDSP()
 {
-    // Default parameters are set in Params struct initializer
 }
 
 VCPluginDSP::~VCPluginDSP()
@@ -41,14 +42,21 @@ void VCPluginDSP::prepare(double sampleRate, int blockSize)
 
     // Reset envelope follower
     mEnvelopeFollower.reset();
-    // CRITICAL: Initialize envelope coefficients in prepare() to avoid
-    // the VC-Comp bug where releaseCoef was 0 before first process() call
     mEnvelopeFollower.setAttackTime(mParams.attack, static_cast<float>(sampleRate));
     mEnvelopeFollower.setReleaseTime(mParams.release, static_cast<float>(sampleRate));
+
+    // Gen2: Initialize sidechain HPF
+    mSidechainHPF.reset();
+    mSidechainHPF.setCutoff(mParams.sidechainHpf, static_cast<float>(sampleRate));
+
+    // Gen2: Initialize lookahead buffer
+    mLookahead.prepare(mParams.lookahead, sampleRate);
+    mLookahead.reset();
 
     // Initialize gate state
     mGateGain = 0.0f;
     mHoldCounter = 0;
+    mAttackHoldCounter = 0;
     mGateOpen = false;
 
     // Initialize attack/release smoothing coefficients
@@ -107,87 +115,112 @@ void VCPluginDSP::process(juce::dsp::AudioBlock<float>& block)
 #endif
 
 //==============================================================================
-// Internal gate processing
+// Internal gate processing (Gen2)
 //==============================================================================
 void VCPluginDSP::processInternal(float* left, float* right, int numSamples)
 {
     // Convert parameters to linear/amenable forms
-    float thresholdLin = dBToLinear(mParams.threshold);
-    float rangeLin = dBToLinear(mParams.range);  // e.g., -80dB -> very small number
+    // Gen2: Hysteresis - separate open and close thresholds
+    float openThresholdLin = dBToLinear(mParams.threshold);
+    float closeThresholdLin = dBToLinear(mParams.threshold - mParams.hysteresis);
+    float rangeLin = dBToLinear(mParams.range);
     float ratio = mParams.ratio;
 
     // Hold in samples
     int holdSamples = static_cast<int>(mParams.hold * 0.001f * static_cast<float>(mSampleRate));
+    // Gen2: Attack-hold in samples
+    int attackHoldSamples = static_cast<int>(mParams.attackHold * 0.001f * static_cast<float>(mSampleRate));
 
     for (int i = 0; i < numSamples; ++i)
     {
         float inL = left[i];
         float inR = right[i];
 
-        // 1. Envelope detection: use max of L/R for stereo detection
-        float envL = mEnvelopeFollower.processSample(inL);
-        float envR = mEnvelopeFollower.processSample(inR);
+        // 1. Gen2: Sidechain HPF - filter low-frequency content from detection
+        float scL = mSidechainHPF.processSample(inL);
+        float scR = mSidechainHPF.processSample(inR);
+
+        // 2. Envelope detection: use filtered signal for stereo detection
+        float envL = mEnvelopeFollower.processSample(scL);
+        float envR = mEnvelopeFollower.processSample(scR);
         float envMax = VC_JMAX(envL, envR);
-        // envMax is squared RMS, take sqrt to get linear envelope
         float envelopeLin = std::sqrt(envMax);
 
-        // 2. Compare with threshold
-        if (envelopeLin >= thresholdLin)
+        // 3. Gen2: Hysteresis gate logic
+        // If gate is closed, use openThreshold to decide if it should open
+        // If gate is open, use closeThreshold to decide if it should close
+        if (!mGateOpen)
         {
-            // Signal above threshold: gate should open
-            mGateOpen = true;
-            mHoldCounter = holdSamples;  // Reset hold timer
+            // Gate is closed - check open threshold
+            if (envelopeLin >= openThresholdLin)
+            {
+                mGateOpen = true;
+                mHoldCounter = holdSamples;
+                mAttackHoldCounter = attackHoldSamples;  // Gen2: start attack-hold
+            }
         }
         else
         {
-            // Signal below threshold
-            if (mHoldCounter > 0)
+            // Gate is open - check close threshold (lower due to hysteresis)
+            if (envelopeLin < closeThresholdLin)
             {
-                // In hold period: gate stays open
-                mHoldCounter--;
+                // Signal below close threshold
+                if (mAttackHoldCounter > 0)
+                {
+                    // Gen2: still in attack-hold period, keep open
+                    mAttackHoldCounter--;
+                }
+                else if (mHoldCounter > 0)
+                {
+                    // In hold period: gate stays open
+                    mHoldCounter--;
+                }
+                else
+                {
+                    // Hold expired: gate should close
+                    mGateOpen = false;
+                }
             }
             else
             {
-                // Hold expired: gate should close
-                mGateOpen = false;
+                // Signal still above close threshold: reset hold timers
+                mHoldCounter = holdSamples;
+                mAttackHoldCounter = attackHoldSamples;
             }
         }
 
-        // 3. Smooth gate gain based on state
+        // 4. Smooth gate gain based on state
         float targetGain = mGateOpen ? 1.0f : 0.0f;
 
         if (mGateGain < targetGain)
         {
-            // Opening: use attack time
+            // Opening: use attack time (fast)
             mGateGain = mAttackCoefInv * targetGain + mAttackCoef * mGateGain;
-            // Prevent overshoot
             if (mGateGain > targetGain) mGateGain = targetGain;
         }
         else if (mGateGain > targetGain)
         {
             // Closing: use release time
             mGateGain = mReleaseCoefInv * targetGain + mReleaseCoef * mGateGain;
-            // Prevent undershoot
             if (mGateGain < targetGain) mGateGain = targetGain;
         }
 
-        // 4. Compute gain reduction with ratio (downward expansion)
-        // gate_gain = 1.0 -> no reduction (0dB)
-        // gate_gain = 0.0 -> full range attenuation
-        // With ratio: when gate is partially open, the expansion curve is:
-        //   For signal below threshold by x dB:
-        //     reduction = x * (1 - 1/ratio) when fully closed
-        // But we implement it simpler with the range-based approach:
-        //   gain_dB = range * (1 - gate_gain)
-        // When ratio = 1: no expansion (bypass)
-        // When ratio > 1: expansion kicks in proportional to (1 - 1/ratio)
+        // 5. Compute gain reduction with ratio (downward expansion)
         float expansionFactor = 1.0f - 1.0f / ratio;
         float gainDB = mParams.range * (1.0f - mGateGain) * expansionFactor;
         float gainLin = dBToLinear(gainDB);
 
-        // 5. Apply gain
-        left[i] = inL * gainLin;
-        right[i] = inR * gainLin;
+        // 6. Gen2: Lookahead - delay the audio to align with the gate decision
+        float delayedL = inL;
+        float delayedR = inR;
+        if (mLookahead.getSize() > 1)
+        {
+            mLookahead.process(delayedL, delayedR);
+        }
+
+        // 7. Apply gain to the delayed signal
+        left[i] = delayedL * gainLin;
+        right[i] = delayedR * gainLin;
     }
 }
 
@@ -197,8 +230,11 @@ void VCPluginDSP::processInternal(float* left, float* right, int numSamples)
 void VCPluginDSP::reset()
 {
     mEnvelopeFollower.reset();
+    mSidechainHPF.reset();
+    mLookahead.reset();
     mGateGain = 0.0f;
     mHoldCounter = 0;
+    mAttackHoldCounter = 0;
     mGateOpen = false;
 }
 
@@ -209,12 +245,16 @@ void VCPluginDSP::setParams(const Params& p)
 {
     mParams = p;
 
-    // Update envelope follower coefficients
     if (mSampleRate > 0.0)
     {
         mEnvelopeFollower.setAttackTime(mParams.attack, static_cast<float>(mSampleRate));
-        // Use release for both envelope follower and gate smoothing
         mEnvelopeFollower.setReleaseTime(mParams.release, static_cast<float>(mSampleRate));
+
+        // Gen2: Update sidechain HPF
+        mSidechainHPF.setCutoff(mParams.sidechainHpf, static_cast<float>(mSampleRate));
+
+        // Gen2: Update lookahead buffer if size changed
+        mLookahead.prepare(mParams.lookahead, mSampleRate);
 
         // Update gate gain smoothing coefficients
         mAttackCoef = std::exp(-1.0f / (mParams.attack * 0.001f * static_cast<float>(mSampleRate)));

@@ -1,13 +1,14 @@
 //==============================================================================
-// VC-Chorus DSP Core Implementation - Multi-Voice Chorus Effect
+// VC-Chorus DSP Core Implementation - Multi-Voice Chorus Effect (Gen2)
 //
-// Algorithm overview:
+// Gen2 Algorithm overview:
 //   1. Input signal is written into stereo delay lines
-//   2. For each voice, LFO modulates the read position:
-//        mod_delay = base_delay + depth_ms * sin(2pi * rate * t + phase_offset)
-//   3. Voices are panned across stereo field using width control
-//   4. Feedback from delay output back into delay input adds richness
-//   5. Dry signal + wet signal mixed according to mix parameter
+//   2. For each voice, LFO modulates the read position with individual phase
+//   3. LFO waveform selectable: sine, triangle, or random interpolation
+//   4. Stereo phase offset between L/R creates natural width
+//   5. Feedback from delay output back into delay input adds richness
+//   6. Up to 8 voices for dense ensemble effects
+//   7. Dry signal + wet signal mixed according to mix parameter
 //==============================================================================
 
 #include "VCPluginDSP.h"
@@ -16,9 +17,6 @@
 #include <algorithm>
 #include <cmath>
 #endif
-
-// Static member initialization
-constexpr float VCPluginDSP::kVoicePhaseOffsets[CHORUS_MAX_VOICES];
 
 //==============================================================================
 // Construction / Destruction
@@ -40,10 +38,9 @@ void VCPluginDSP::prepare(double sampleRate, int blockSize)
     mBlockSize = blockSize;
 
     // Allocate delay buffer: max delay + max modulation + safety margin
-    // Max delay = 30ms, max mod depth = 10ms, add 5ms safety
-    float maxDelayMs = CHORUS_MAX_DELAY_MS + CHORUS_MAX_MOD_DEPTH_MS + 5.0f;
+    float maxDelayMs = CHORUS_MAX_DELAY_MS + CHORUS_MAX_MOD_DEPTH_MS + 10.0f;
     mMaxDelaySamples = static_cast<int>(maxDelayMs * 0.001f * sampleRate);
-    mMaxDelaySamples = VC_JMAX(mMaxDelaySamples, 256);  // Minimum buffer size
+    mMaxDelaySamples = VC_JMAX(mMaxDelaySamples, 512);
 
     mDelayBuffer[0].resize(mMaxDelaySamples, 0.0f);
     mDelayBuffer[1].resize(mMaxDelaySamples, 0.0f);
@@ -51,6 +48,15 @@ void VCPluginDSP::prepare(double sampleRate, int blockSize)
 
     // Reset LFO phase
     mLFOPhase = 0.0f;
+
+    // Gen2: Compute per-voice phase offsets (evenly distributed across 360 degrees)
+    for (int v = 0; v < CHORUS_MAX_VOICES; ++v)
+    {
+        mVoicePhaseOffsets[v] = (2.0f * VC_PI * static_cast<float>(v)) /
+                                 static_cast<float>(CHORUS_MAX_VOICES);
+        mRandomLFO[v].reset();
+        mRandomLFOR[v].reset();
+    }
 
     // Resize internal buffer for AudioBlock conversion
     mInternalBuffer.resize(blockSize * 2);
@@ -106,14 +112,12 @@ void VCPluginDSP::process(juce::dsp::AudioBlock<float>& block)
 //==============================================================================
 float VCPluginDSP::readDelay(int channel, float delaySamples) const
 {
-    // Convert delay in samples to read position (behind write head)
     float readPos = static_cast<float>(mWritePos) - delaySamples;
     while (readPos < 0.0f)
         readPos += static_cast<float>(mMaxDelaySamples);
     while (readPos >= static_cast<float>(mMaxDelaySamples))
         readPos -= static_cast<float>(mMaxDelaySamples);
 
-    // Linear interpolation
     int pos0 = static_cast<int>(readPos);
     int pos1 = (pos0 + 1) % mMaxDelaySamples;
     float frac = readPos - static_cast<float>(pos0);
@@ -123,24 +127,61 @@ float VCPluginDSP::readDelay(int channel, float delaySamples) const
 }
 
 //==============================================================================
-// Internal chorus processing
+// Gen2: LFO waveform generation
+//==============================================================================
+float VCPluginDSP::generateLFO(LFOWaveform waveform, float phase) const
+{
+    switch (waveform)
+    {
+        case LFOWaveform::Sine:
+            return std::sin(phase);
+
+        case LFOWaveform::Triangle:
+        {
+            // Triangle: period of 2*pi, output -1 to 1
+            float p = phase / (2.0f * VC_PI);  // normalize to 0-1
+            p = p - std::floor(p);              // keep fractional part
+            if (p < 0.25f)
+                return 4.0f * p;
+            else if (p < 0.75f)
+                return 2.0f - 4.0f * p;
+            else
+                return -4.0f + 4.0f * p;
+        }
+
+        case LFOWaveform::Random:
+            // Random LFO is handled separately with per-voice RandomLFO objects
+            // This return is a fallback, should not be called for Random mode
+            return 0.0f;
+
+        default:
+            return std::sin(phase);
+    }
+}
+
+//==============================================================================
+// Internal chorus processing (Gen2)
 //==============================================================================
 void VCPluginDSP::processInternal(float* left, float* right, int numSamples)
 {
     float sampleRateF = static_cast<float>(mSampleRate);
 
     // Parameter conversion
-    float rate = mParams.rate;                             // Hz
-    float depthMs = mParams.depth / 100.0f * CHORUS_MAX_MOD_DEPTH_MS;  // 0~10ms
-    int voices = VC_JCLAMP(mParams.voices, 1, CHORUS_MAX_VOICES);
-    float wetMix = mParams.mix / 100.0f;                  // 0~1
+    float rate = mParams.rate;
+    float depthMs = mParams.depth / 100.0f * CHORUS_MAX_MOD_DEPTH_MS;
+    int voices = VC_JCLAMP(mParams.voices, 2, CHORUS_MAX_VOICES);
+    float wetMix = mParams.mix / 100.0f;
     float dryMix = 1.0f - wetMix;
-    float baseDelayMs = mParams.delay;                    // 5~30ms
-    float width = mParams.width / 100.0f;                 // 0~1
-    float feedback = mParams.feedback / 100.0f;           // 0~0.5
+    float baseDelayMs = mParams.delay;
+    float width = mParams.width / 100.0f;
+    float feedback = VC_JCLAMP(mParams.feedback, 0.0f, 0.9f);
+    LFOWaveform waveform = mParams.lfoWaveform;
+    float stereoPhaseRad = mParams.stereoPhase * VC_PI / 180.0f;
 
     // LFO phase increment per sample
     float phaseIncrement = 2.0f * VC_PI * rate / sampleRateF;
+    // Random LFO phase increment (full cycle = 2*PI/rate mapped to 0-1)
+    float randomPhaseIncrement = rate / sampleRateF;
 
     // Base delay in samples
     float baseDelaySamples = baseDelayMs * 0.001f * sampleRateF;
@@ -151,7 +192,6 @@ void VCPluginDSP::processInternal(float* left, float* right, int numSamples)
         float inR = right[i];
 
         // Write input + feedback into delay lines
-        // Read current output for feedback (from voice 0's position as reference)
         float fbReadL = readDelay(0, baseDelaySamples);
         float fbReadR = readDelay(1, baseDelaySamples);
 
@@ -164,27 +204,36 @@ void VCPluginDSP::processInternal(float* left, float* right, int numSamples)
 
         for (int v = 0; v < voices; ++v)
         {
-            // LFO for this voice
-            float lfoValue = std::sin(mLFOPhase + kVoicePhaseOffsets[v]);
-            float modDelaySamples = baseDelaySamples + depthMs * 0.001f * sampleRateF * lfoValue;
+            float voicePhase = mLFOPhase + mVoicePhaseOffsets[v];
+            float voicePhaseR = mLFOPhase + mVoicePhaseOffsets[v] + stereoPhaseRad;
 
-            // Ensure delay doesn't go negative or exceed buffer
-            modDelaySamples = VC_JCLAMP(modDelaySamples, 1.0f,
-                                        static_cast<float>(mMaxDelaySamples) - 2.0f);
+            float lfoValueL, lfoValueR;
 
-            // Read from delay lines with modulated position
-            float voiceOutL = readDelay(0, modDelaySamples);
-            float voiceOutR = readDelay(1, modDelaySamples);
+            if (waveform == LFOWaveform::Random)
+            {
+                // Gen2: Random waveform - use dedicated RandomLFO per voice
+                lfoValueL = mRandomLFO[v].process(randomPhaseIncrement);
+                lfoValueR = mRandomLFOR[v].process(randomPhaseIncrement);
+            }
+            else
+            {
+                // Sine or Triangle
+                lfoValueL = generateLFO(waveform, voicePhase);
+                lfoValueR = generateLFO(waveform, voicePhaseR);
+            }
 
-            // Stereo width: pan voices across the stereo field
-            // Voice 0: center, Voice 1: wide, Voice 2: opposite, Voice 3: very wide
-            // Using different LFO phases for L and R creates width
-            float lfoValueR = std::sin(mLFOPhase + kVoicePhaseOffsets[v] + width * VC_PI * 0.5f);
+            // Modulated delay for left channel
+            float modDelayL = baseDelaySamples + depthMs * 0.001f * sampleRateF * lfoValueL;
+            modDelayL = VC_JCLAMP(modDelayL, 1.0f,
+                                   static_cast<float>(mMaxDelaySamples) - 2.0f);
+
+            // Modulated delay for right channel (with stereo phase offset)
             float modDelayR = baseDelaySamples + depthMs * 0.001f * sampleRateF * lfoValueR;
             modDelayR = VC_JCLAMP(modDelayR, 1.0f,
                                    static_cast<float>(mMaxDelaySamples) - 2.0f);
 
-            voiceOutR = readDelay(1, modDelayR);
+            float voiceOutL = readDelay(0, modDelayL);
+            float voiceOutR = readDelay(1, modDelayR);
 
             // Accumulate
             wetL += voiceOutL;
@@ -222,6 +271,12 @@ void VCPluginDSP::reset()
     std::fill(mDelayBuffer[1].begin(), mDelayBuffer[1].end(), 0.0f);
     mWritePos = 0;
     mLFOPhase = 0.0f;
+
+    for (int v = 0; v < CHORUS_MAX_VOICES; ++v)
+    {
+        mRandomLFO[v].reset();
+        mRandomLFOR[v].reset();
+    }
 }
 
 //==============================================================================

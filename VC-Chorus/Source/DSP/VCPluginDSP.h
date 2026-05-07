@@ -1,16 +1,15 @@
 #pragma once
 
 //==============================================================================
-// VC-Chorus DSP Core Header - Multi-Voice Chorus Effect
+// VC-Chorus DSP Core Header - Multi-Voice Chorus Effect (Gen2)
 // Supports both JUCE and Standalone (no dependency) modes
 //
-// Algorithm: Multi-voice modulated delay chorus
-//   1. Base delay line (5~30ms)
-//   2. LFO modulates delay time: delay + depth * sin(2pi * rate * t)
-//   3. Multiple voices with different LFO phase offsets (0, 90, 180, 270 degrees)
-//   4. Stereo width via different phase per channel
-//   5. Feedback for richer texture
-//   6. Dry/wet mix control
+// Gen2 Upgrades:
+//   1. Multi-voice chorus: 2-8 independent delay lines + LFO
+//   2. Stereo expansion: L/R LFO phase offset for natural width
+//   3. Adjustable LFO waveform: sine / triangle / random
+//   4. Extended feedback range: 0-0.9 for richer texture
+//   5. Per-voice LFO with individual phase offsets
 //==============================================================================
 
 // Shared constants (available in both JUCE and Standalone modes)
@@ -43,31 +42,89 @@ namespace VCStandalone {
 #endif
 
 //==============================================================================
-// Maximum configuration constants
+// Maximum configuration constants (Gen2: expanded to 8 voices)
 //==============================================================================
-constexpr int CHORUS_MAX_VOICES = 4;
-constexpr float CHORUS_MAX_DELAY_MS = 30.0f;
-constexpr float CHORUS_MAX_MOD_DEPTH_MS = 10.0f;  // Max modulation depth in ms
+constexpr int CHORUS_MAX_VOICES = 8;
+constexpr float CHORUS_MAX_DELAY_MS = 40.0f;
+constexpr float CHORUS_MAX_MOD_DEPTH_MS = 15.0f;
 
 //==============================================================================
-// Main DSP Class
+// LFO Waveform Type (Gen2)
+//==============================================================================
+enum class LFOWaveform
+{
+    Sine = 0,
+    Triangle = 1,
+    Random = 2
+};
+
+//==============================================================================
+// Random LFO interpolator (Gen2)
+// Generates smooth random modulation by interpolating between random targets
+//==============================================================================
+class RandomLFO
+{
+public:
+    RandomLFO() = default;
+
+    void reset()
+    {
+        currentTarget = 0.0f;
+        previousTarget = 0.0f;
+        phase = 0.0f;
+    }
+
+    // Returns a smooth random value between -1 and 1
+    float process(float phaseIncrement)
+    {
+        phase += phaseIncrement;
+        if (phase >= 1.0f)
+        {
+            phase -= 1.0f;
+            previousTarget = currentTarget;
+            currentTarget = randomTarget();
+        }
+        // Cosine interpolation between targets
+        float t = 0.5f * (1.0f - std::cos(phase * VC_PI));
+        return previousTarget + t * (currentTarget - previousTarget);
+    }
+
+private:
+    float currentTarget = 0.0f;
+    float previousTarget = 0.0f;
+    float phase = 0.0f;
+
+    // Simple pseudo-random in [-1, 1]
+    float randomTarget()
+    {
+        // Use a simple LCG for reproducibility
+        static unsigned int seed = 12345;
+        seed = seed * 1103515245u + 12345u;
+        return (static_cast<float>((seed >> 16) & 0x7FFF) / 16384.0f) - 1.0f;
+    }
+};
+
+//==============================================================================
+// Main DSP Class (Gen2)
 //==============================================================================
 class VCPluginDSP
 {
 public:
     //==========================================================================
-    // Plugin-specific parameter structure
+    // Plugin-specific parameter structure (Gen2)
     //==========================================================================
     struct Params
     {
-        float rate = 1.5f;          // Hz (0.1 ~ 10) - LFO modulation rate
-        float depth = 50.0f;        // % (0 ~ 100) - LFO modulation depth
-        int voices = 2;             // Number of chorus voices (1 ~ 4)
-        float mix = 50.0f;          // % (0 ~ 100) - Dry/wet mix
-        float delay = 15.0f;        // ms (5 ~ 30) - Base delay time
-        float width = 80.0f;        // % (0 ~ 100) - Stereo width
-        float feedback = 20.0f;     // % (0 ~ 50) - Feedback amount
-        bool enabled = true;        // Bypass flag
+        float rate = 1.5f;              // Hz (0.1 ~ 10) - LFO modulation rate
+        float depth = 50.0f;            // % (0 ~ 100) - LFO modulation depth
+        int voices = 3;                 // Number of chorus voices (2 ~ 8)
+        float mix = 50.0f;              // % (0 ~ 100) - Dry/wet mix
+        float delay = 15.0f;            // ms (5 ~ 40) - Base delay time
+        float width = 80.0f;            // % (0 ~ 100) - Stereo width
+        float feedback = 0.2f;          // (0 ~ 0.9) - Feedback amount
+        LFOWaveform lfoWaveform = LFOWaveform::Sine;  // LFO waveform type
+        float stereoPhase = 90.0f;      // degrees (0 ~ 180) - L/R LFO phase offset
+        bool enabled = true;            // Bypass flag
     };
 
     //==========================================================================
@@ -83,7 +140,6 @@ public:
     void process(float* left, float* right, int numSamples);
 
 #ifndef VC_STANDALONE
-    // JUCE AudioBlock processing (non-interleaved)
     void process(juce::dsp::AudioBlock<float>& block);
 #endif
 
@@ -132,6 +188,11 @@ private:
     float readDelay(int channel, float delaySamples) const;
 
     //==========================================================================
+    // Gen2: LFO waveform generation
+    //==========================================================================
+    float generateLFO(LFOWaveform waveform, float phase) const;
+
+    //==========================================================================
     // Member variables
     //==========================================================================
     double mSampleRate = 44100.0;
@@ -141,21 +202,21 @@ private:
 
     // Delay lines: one per channel (L/R), each voice reads from the same line
     // but with different LFO phases
-    std::vector<float> mDelayBuffer[2];  // [channel]
+    std::vector<float> mDelayBuffer[2];
     int mWritePos = 0;
-    int mMaxDelaySamples = 0;            // Buffer size in samples
+    int mMaxDelaySamples = 0;
 
     // LFO phase accumulator (runs continuously)
     float mLFOPhase = 0.0f;
 
-    // LFO phase offsets for each voice (in radians)
-    // Voice 0: 0°, Voice 1: 90°, Voice 2: 180°, Voice 3: 270°
-    static constexpr float kVoicePhaseOffsets[CHORUS_MAX_VOICES] = {
-        0.0f,
-        1.5707963268f,     // pi/2
-        3.1415926536f,     // pi
-        4.7123889804f      // 3*pi/2
-    };
+    // Gen2: Per-voice LFO phase offsets (evenly distributed)
+    float mVoicePhaseOffsets[CHORUS_MAX_VOICES] = {};
+
+    // Gen2: Random LFO generators (one per voice)
+    RandomLFO mRandomLFO[CHORUS_MAX_VOICES];
+
+    // Gen2: Random LFO for right channel (with stereo phase offset)
+    RandomLFO mRandomLFOR[CHORUS_MAX_VOICES];
 
     // Internal buffer for AudioBlock conversion
     std::vector<float> mInternalBuffer;

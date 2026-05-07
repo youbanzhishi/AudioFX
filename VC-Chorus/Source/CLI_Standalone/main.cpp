@@ -1,16 +1,18 @@
 //==============================================================================
-// VC-Chorus Standalone CLI - Multi-Voice Chorus Effect
+// VC-Chorus Standalone CLI - Multi-Voice Chorus Effect (Gen2)
 // No JUCE dependency - Uses dr_wav for WAV I/O
 //
-// Parameters:
-//   --rate      0.1~10 Hz      LFO modulation rate (default: 1.5)
-//   --depth     0~100 %        LFO modulation depth (default: 50)
-//   --voices    1~4            Number of chorus voices (default: 2)
-//   --mix       0~100 %        Dry/wet mix (default: 50)
-//   --delay     5~30 ms        Base delay time (default: 15)
-//   --width     0~100 %        Stereo width (default: 80)
-//   --feedback  0~50 %         Feedback amount (default: 20)
-//   --bypass    0|1            Bypass (default: 0)
+// Gen2 Parameters:
+//   --rate           0.1~10 Hz      LFO modulation rate (default: 1.5)
+//   --depth          0~100 %        LFO modulation depth (default: 50)
+//   --voices         2~8            Number of chorus voices (default: 3)
+//   --mix            0~100 %        Dry/wet mix (default: 50)
+//   --delay          5~40 ms        Base delay time (default: 15)
+//   --width          0~100 %        Stereo width (default: 80)
+//   --feedback       0~0.9          Feedback amount (default: 0.2)
+//   --lfo-waveform   sine|triangle|random  LFO waveform (default: sine)
+//   --stereo-phase   0~180 deg      L/R LFO phase offset (default: 90)
+//   --bypass         0|1            Bypass (default: 0)
 //==============================================================================
 
 #define DR_WAV_IMPLEMENTATION
@@ -28,7 +30,7 @@
 #include "../DSP/VCPluginDSP.h"
 
 //==============================================================================
-// Plugin-specific presets
+// Plugin-specific presets (Gen2)
 //==============================================================================
 struct Preset {
     const char* name;
@@ -36,36 +38,37 @@ struct Preset {
 };
 
 static const Preset presets[] = {
-    // name,        rate, depth, voices, mix,   delay, width, feedback, enabled
-    {"bypass",      {1.5f, 50.0f, 2, 50.0f, 15.0f, 80.0f, 20.0f, false}},
-    {"light",       {0.8f, 30.0f, 2, 30.0f, 12.0f, 60.0f, 10.0f, true }},
-    {"standard",    {1.5f, 50.0f, 2, 50.0f, 15.0f, 80.0f, 20.0f, true }},
-    {"deep",        {0.5f, 80.0f, 3, 60.0f, 20.0f, 90.0f, 30.0f, true }},
-    {"ensemble",    {2.0f, 60.0f, 4, 55.0f, 18.0f, 100.0f, 25.0f, true }},
-    {"doubler",     {0.3f, 20.0f, 2, 45.0f, 10.0f, 70.0f, 15.0f, true }},
-    {"flanger",     {3.0f, 90.0f, 2, 60.0f,  5.0f, 85.0f, 40.0f, true }},
+    // name,          rate, depth, voices, mix,   delay, width, feedback, lfoWaveform,          stereoPhase, enabled
+    {"bypass",        {1.5f, 50.0f, 3, 50.0f, 15.0f, 80.0f, 0.2f, LFOWaveform::Sine,     90.0f, false}},
+    {"subtle",        {0.8f, 30.0f, 2, 30.0f, 12.0f, 50.0f, 0.1f, LFOWaveform::Sine,     60.0f, true }},
+    {"rich",          {1.2f, 60.0f, 4, 55.0f, 18.0f, 85.0f, 0.3f, LFOWaveform::Sine,     90.0f, true }},
+    {"stereo-wide",   {1.5f, 50.0f, 4, 50.0f, 15.0f, 100.0f, 0.2f, LFOWaveform::Triangle, 120.0f, true }},
+    {"ensemble",      {2.0f, 55.0f, 6, 60.0f, 20.0f, 90.0f, 0.25f, LFOWaveform::Random,   90.0f, true }},
+    {"leslie",        {5.5f, 70.0f, 2, 65.0f, 10.0f, 95.0f, 0.4f, LFOWaveform::Sine,     180.0f, true }},
 };
 
 //==============================================================================
 // Help text
 //==============================================================================
 void printHelp(const char* progName) {
-    std::cout << "VC-Chorus Standalone CLI - Multi-Voice Chorus Effect (No JUCE)\n\n";
+    std::cout << "VC-Chorus Standalone CLI - Multi-Voice Chorus Effect (Gen2)\n\n";
     std::cout << "Usage: " << progName << " <input.wav> <output.wav> [options]\n\n";
     std::cout << "Options:\n";
-    std::cout << "  --help, -h           Show this help\n";
-    std::cout << "  --preset <name>      Preset (bypass, light, standard, deep, ensemble, doubler, flanger)\n";
-    std::cout << "  --rate <Hz>          LFO rate (0.1 ~ 10), default: 1.5\n";
-    std::cout << "  --depth <%>          Modulation depth (0 ~ 100), default: 50\n";
-    std::cout << "  --voices <n>         Number of voices (1 ~ 4), default: 2\n";
-    std::cout << "  --mix <%>            Dry/wet mix (0 ~ 100), default: 50\n";
-    std::cout << "  --delay <ms>         Base delay time (5 ~ 30), default: 15\n";
-    std::cout << "  --width <%>          Stereo width (0 ~ 100), default: 80\n";
-    std::cout << "  --feedback <%>       Feedback amount (0 ~ 50), default: 20\n";
-    std::cout << "  --bypass <0|1>       Bypass processing (default: 0)\n\n";
+    std::cout << "  --help, -h                Show this help\n";
+    std::cout << "  --preset <name>           Preset (bypass, subtle, rich, stereo-wide, ensemble, leslie)\n";
+    std::cout << "  --rate <Hz>               LFO rate (0.1 ~ 10), default: 1.5\n";
+    std::cout << "  --depth <%>               Modulation depth (0 ~ 100), default: 50\n";
+    std::cout << "  --voices <n>              Number of voices (2 ~ 8), default: 3\n";
+    std::cout << "  --mix <%>                 Dry/wet mix (0 ~ 100), default: 50\n";
+    std::cout << "  --delay <ms>              Base delay time (5 ~ 40), default: 15\n";
+    std::cout << "  --width <%>               Stereo width (0 ~ 100), default: 80\n";
+    std::cout << "  --feedback <0~0.9>        Feedback amount (0 ~ 0.9), default: 0.2\n";
+    std::cout << "  --lfo-waveform <type>     LFO waveform (sine, triangle, random), default: sine\n";
+    std::cout << "  --stereo-phase <deg>      L/R LFO phase offset (0 ~ 180), default: 90\n";
+    std::cout << "  --bypass <0|1>            Bypass processing (default: 0)\n\n";
     std::cout << "Examples:\n";
     std::cout << "  " << progName << " in.wav out.wav --preset ensemble\n";
-    std::cout << "  " << progName << " in.wav out.wav --rate 0.8 --depth 40 --voices 3\n";
+    std::cout << "  " << progName << " in.wav out.wav --rate 0.8 --depth 40 --voices 5 --lfo-waveform triangle\n";
 }
 
 //==============================================================================
@@ -104,7 +107,7 @@ bool loadPreset(const std::string& name, VCPluginDSP::Params& p) {
 }
 
 //==============================================================================
-// Safe float argument parser (uses stof for negative/decimal numbers)
+// Safe float argument parser
 //==============================================================================
 float getFloatArg(const std::map<std::string, std::string>& args,
                   const std::string& key, float defaultVal) {
@@ -132,6 +135,16 @@ int getIntArg(const std::map<std::string, std::string>& args,
             return defaultVal;
         }
     }
+    return defaultVal;
+}
+
+//==============================================================================
+// Parse LFO waveform string
+//==============================================================================
+LFOWaveform parseLFOWaveform(const std::string& str, LFOWaveform defaultVal) {
+    if (str == "sine") return LFOWaveform::Sine;
+    if (str == "triangle") return LFOWaveform::Triangle;
+    if (str == "random") return LFOWaveform::Random;
     return defaultVal;
 }
 
@@ -167,7 +180,7 @@ int main(int argc, char** argv) {
     std::string inFile = files[0];
     std::string outFile = files[1];
 
-    std::cout << "VC-Chorus Standalone CLI - Multi-Voice Chorus Effect\n";
+    std::cout << "VC-Chorus Standalone CLI - Multi-Voice Chorus Effect (Gen2)\n";
     std::cout << "Input: " << inFile << "\n";
     std::cout << "Output: " << outFile << "\n";
 
@@ -226,28 +239,39 @@ int main(int argc, char** argv) {
     }
 
     // Override with command line parameters
-    params.rate     = getFloatArg(args, "--rate",     params.rate);
-    params.depth    = getFloatArg(args, "--depth",    params.depth);
-    params.voices   = getIntArg(args,   "--voices",   params.voices);
-    params.mix      = getFloatArg(args, "--mix",      params.mix);
-    params.delay    = getFloatArg(args, "--delay",    params.delay);
-    params.width    = getFloatArg(args, "--width",    params.width);
-    params.feedback = getFloatArg(args, "--feedback", params.feedback);
+    params.rate         = getFloatArg(args, "--rate",  params.rate);
+    params.depth        = getFloatArg(args, "--depth", params.depth);
+    params.voices       = getIntArg(args,   "--voices", params.voices);
+    params.mix          = getFloatArg(args, "--mix",   params.mix);
+    params.delay        = getFloatArg(args, "--delay", params.delay);
+    params.width        = getFloatArg(args, "--width", params.width);
+    params.feedback     = getFloatArg(args, "--feedback", params.feedback);
+    params.stereoPhase  = getFloatArg(args, "--stereo-phase", params.stereoPhase);
+
+    // Parse LFO waveform
+    if (args.count("--lfo-waveform")) {
+        params.lfoWaveform = parseLFOWaveform(args["--lfo-waveform"], params.lfoWaveform);
+    }
 
     if (args.count("--bypass")) {
         params.enabled = (args["--bypass"] != "1");
     }
 
+    // Waveform name for display
+    const char* waveformNames[] = {"sine", "triangle", "random"};
+
     // Print settings
     std::cout << "\nParameters:\n";
-    std::cout << "  Rate: " << params.rate << " Hz\n";
-    std::cout << "  Depth: " << params.depth << " %\n";
-    std::cout << "  Voices: " << params.voices << "\n";
-    std::cout << "  Mix: " << params.mix << " %\n";
-    std::cout << "  Delay: " << params.delay << " ms\n";
-    std::cout << "  Width: " << params.width << " %\n";
-    std::cout << "  Feedback: " << params.feedback << " %\n";
-    std::cout << "  Bypass: " << (params.enabled ? "off" : "on") << "\n";
+    std::cout << "  Rate:          " << params.rate << " Hz\n";
+    std::cout << "  Depth:         " << params.depth << " %\n";
+    std::cout << "  Voices:        " << params.voices << "\n";
+    std::cout << "  Mix:           " << params.mix << " %\n";
+    std::cout << "  Delay:         " << params.delay << " ms\n";
+    std::cout << "  Width:         " << params.width << " %\n";
+    std::cout << "  Feedback:      " << params.feedback << "\n";
+    std::cout << "  LFO Waveform:  " << waveformNames[static_cast<int>(params.lfoWaveform)] << "\n";
+    std::cout << "  Stereo Phase:  " << params.stereoPhase << " deg\n";
+    std::cout << "  Bypass:        " << (params.enabled ? "off" : "on") << "\n";
 
     dsp.setParams(params);
     dsp.setEnabled(params.enabled);
@@ -266,7 +290,7 @@ int main(int argc, char** argv) {
     format.format = DR_WAVE_FORMAT_IEEE_FLOAT;
     format.channels = channels >= 2 ? 2 : 1;
     format.sampleRate = sampleRate;
-    format.bitsPerSample = 32;  // 32-bit float
+    format.bitsPerSample = 32;
 
     drwav wav;
     if (!drwav_init_file_write(&wav, outFile.c_str(), &format, NULL)) {
