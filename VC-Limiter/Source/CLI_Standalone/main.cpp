@@ -48,7 +48,7 @@ void printHelp(const char* progName) {
     std::cout << "  --bypass <0|1>       Bypass processing (default: 0)\n\n";
     std::cout << "Examples:\n";
     std::cout << "  " << progName << " in.wav out.wav --preset gain-3db\n";
-    std::cout << "  " << progName << " in.wav out.wav --gain 6.0 --mix 75\n";
+    std::cout << "  " << progName << " in.wav out.wav --threshold -6 --ceiling -0.3\n";
 }
 
 //==============================================================================
@@ -177,10 +177,22 @@ int main(int argc, char** argv) {
     }
 
     // Override with command line parameters
-    if (args.count("--gain")) {
-        params.gainDB = std::stof(args["--gain"]);
+    if (args.count("--threshold")) {
+        params.threshold = std::stof(args["--threshold"]);
         dsp.setParams(params);
-        std::cout << "Gain: " << params.gainDB << " dB\n";
+        std::cout << "Threshold: " << params.threshold << " dB\n";
+    }
+
+    if (args.count("--ceiling")) {
+        params.ceiling = std::stof(args["--ceiling"]);
+        dsp.setParams(params);
+        std::cout << "Ceiling: " << params.ceiling << " dB\n";
+    }
+
+    if (args.count("--release")) {
+        params.release = std::stof(args["--release"]);
+        dsp.setParams(params);
+        std::cout << "Release: " << params.release << " ms\n";
     }
 
     if (args.count("--mix")) {

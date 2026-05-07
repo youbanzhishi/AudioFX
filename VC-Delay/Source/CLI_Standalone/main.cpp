@@ -48,7 +48,7 @@ void printHelp(const char* progName) {
     std::cout << "  --bypass <0|1>       Bypass processing (default: 0)\n\n";
     std::cout << "Examples:\n";
     std::cout << "  " << progName << " in.wav out.wav --preset gain-3db\n";
-    std::cout << "  " << progName << " in.wav out.wav --gain 6.0 --mix 75\n";
+    std::cout << "  " << progName << " in.wav out.wav --time 250 --feedback 30\n";
 }
 
 //==============================================================================
@@ -177,10 +177,16 @@ int main(int argc, char** argv) {
     }
 
     // Override with command line parameters
-    if (args.count("--gain")) {
-        params.gainDB = std::stof(args["--gain"]);
+    if (args.count("--time")) {
+        params.delayTime = std::stof(args["--time"]);
         dsp.setParams(params);
-        std::cout << "Gain: " << params.gainDB << " dB\n";
+        std::cout << "Delay: " << params.delayTime << " ms\n";
+    }
+
+    if (args.count("--feedback")) {
+        params.feedback = std::stof(args["--feedback"]);
+        dsp.setParams(params);
+        std::cout << "Feedback: " << params.feedback << " %\n";
     }
 
     if (args.count("--mix")) {
