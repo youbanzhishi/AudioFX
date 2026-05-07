@@ -92,7 +92,8 @@ jobs:
   # ──────────────────────────────────────
   # 阶段1.5: Gen2插件快速编译验证（g++ standalone，无需JUCE）
   # 在完整JUCE构建前快速验证Gen2插件能否编译通过
-  # Gen2插件: VC-Stereo, VC-PitchShift, VC-Reverb(FDN升级), VC-Comp(多段压缩升级)
+  # Gen2插件: VC-Stereo, VC-PitchShift, VC-Reverb(FDN升级), VC-Comp(多段压缩升级),
+  #           VC-Tune, VC-MultiBand, VC-Harmonizer, VC-NoiseProfile
   # ──────────────────────────────────────
   gen2-verify:
     name: Gen2 Compile Verify
@@ -133,6 +134,38 @@ jobs:
           g++ -std=c++17 -DVC_STANDALONE -O2 -I../Libs/dr_wav \
             Source/CLI_Standalone/main.cpp Source/DSP/VCCompDSP.cpp \
             -o VC-Comp-CLI-Standalone -lm
+
+      - name: Build VC-Tune (Standalone)
+        shell: bash
+        run: |
+          cd VC-Tune
+          g++ -std=c++17 -DVC_STANDALONE -O2 -I../Libs/dr_wav \
+            Source/CLI_Standalone/main.cpp Source/DSP/VCPluginDSP.cpp \
+            -o VC-Tune-CLI-Standalone -lm
+
+      - name: Build VC-MultiBand (Standalone)
+        shell: bash
+        run: |
+          cd VC-MultiBand
+          g++ -std=c++17 -DVC_STANDALONE -O2 -I../Libs/dr_wav \
+            Source/CLI_Standalone/main.cpp Source/DSP/VCPluginDSP.cpp \
+            -o VC-MultiBand-CLI-Standalone -lm
+
+      - name: Build VC-Harmonizer (Standalone)
+        shell: bash
+        run: |
+          cd VC-Harmonizer
+          g++ -std=c++17 -DVC_STANDALONE -O2 -I../Libs/dr_wav \
+            Source/CLI_Standalone/main.cpp Source/DSP/VCPluginDSP.cpp \
+            -o VC-Harmonizer-CLI-Standalone -lm
+
+      - name: Build VC-NoiseProfile (Standalone)
+        shell: bash
+        run: |
+          cd VC-NoiseProfile
+          g++ -std=c++17 -DVC_STANDALONE -O2 -I../Libs/dr_wav \
+            Source/CLI_Standalone/main.cpp Source/DSP/VCPluginDSP.cpp \
+            -o VC-NoiseProfile-CLI-Standalone -lm
 
   # ──────────────────────────────────────
   # 阶段2: 每个插件 × 每个平台独立构建
@@ -257,7 +290,7 @@ jobs:
           # Gen1 plugins (14): VC-EQ, VC-Smooth, VC-Gain, VC-Saturator,
           #   VC-DeEsser, VC-SurgicalDeEsser, VC-Limiter, VC-Delay,
           #   VC-DynamicEQ, VC-Distortion, VC-Noise, VC-Tune, VC-Gate, VC-Chorus
-          # Gen2 plugins (4): VC-Stereo, VC-PitchShift, VC-Reverb(FDN升级), VC-Comp(多段压缩升级)
+          # Gen2 plugins (8): VC-Stereo, VC-PitchShift, VC-Reverb(FDN升级), VC-Comp(多段压缩升级), VC-Tune, VC-MultiBand, VC-Harmonizer, VC-NoiseProfile
           # Custom DSP filenames: VCEQDSP, VCCompDSP, VCSmoothDSP,
           #   VCDistortionDSP, VCNoiseDSP, VCSurgicalDeEsserDSP
           if [ -f "Source/DSP/VCEQDSP.cpp" ]; then DSP="Source/DSP/VCEQDSP.cpp"
