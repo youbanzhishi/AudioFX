@@ -7,11 +7,6 @@
 //   3. Phase increments are scaled by the pitch shift ratio
 //   4. Scaled phases are accumulated for synthesis
 //   5. IFFT and overlap-add produces the output
-//
-// Formant preservation:
-//   The spectral envelope is estimated via cepstral smoothing.
-//   After pitch shifting the harmonic structure, the original spectral
-//   envelope is reapplied to preserve vocal formants.
 //==============================================================================
 
 #include "VCPluginDSP.h"
@@ -41,7 +36,6 @@ void VCPluginDSP::prepare(double sampleRate, int blockSize)
     mSampleRate = sampleRate;
     mBlockSize = blockSize;
 
-    // Compute pitch ratio from default params
     updatePitchRatio();
 
     // Allocate PV state per channel
@@ -64,6 +58,10 @@ void VCPluginDSP::prepare(double sampleRate, int blockSize)
     mInternalPtrs.resize(2);
     mInternalPtrs[0] = mInternalBuffer.data();
     mInternalPtrs[1] = mInternalBuffer.data() + blockSize;
+
+    // Input copy buffer (for in-place processing safety)
+    mInputCopy[0].resize(PV_FFT_SIZE * 4, 0.0f);
+    mInputCopy[1].resize(PV_FFT_SIZE * 4, 0.0f);
 }
 
 //==============================================================================
@@ -86,7 +84,6 @@ void VCPluginDSP::process(float* left, float* right, int numSamples)
 #ifdef VC_STANDALONE
     processInternal(left, right, numSamples);
 #else
-    // JUCE: use AudioBlock (non-interleaved layout)
     if ((int)mInternalBuffer.size() < numSamples * 2)
         mInternalBuffer.resize(static_cast<size_t>(numSamples) * 2);
 
@@ -112,7 +109,7 @@ void VCPluginDSP::process(float* left, float* right, int numSamples)
 }
 
 //==============================================================================
-// JUCE AudioBlock processing (non-interleaved)
+// JUCE AudioBlock processing
 //==============================================================================
 #ifndef VC_STANDALONE
 void VCPluginDSP::process(juce::dsp::AudioBlock<float>& block)
@@ -203,8 +200,9 @@ void VCPluginDSP::fft(float* real, float* imag, int N, bool inverse)
 
 //==============================================================================
 // Process one channel through Phase Vocoder
+// IMPORTANT: input and output must be different buffers!
 //==============================================================================
-void VCPluginDSP::processChannelPV(float* input, float* output, int numSamples, int channel)
+void VCPluginDSP::processChannelPV(const float* input, float* output, int numSamples, int channel)
 {
     float pitchRatio = mPitchRatio;
     float sampleRateF = static_cast<float>(mSampleRate);
@@ -212,7 +210,7 @@ void VCPluginDSP::processChannelPV(float* input, float* output, int numSamples, 
     float expectedPhaseInc = 2.0f * VC_PI * static_cast<float>(PV_HOP_SIZE)
                            / static_cast<float>(PV_FFT_SIZE);
 
-    // Synthesis hop = analysis hop / pitchRatio
+    // Synthesis hop
     int synthHop = static_cast<int>(static_cast<float>(PV_HOP_SIZE) / pitchRatio + 0.5f);
     if (synthHop < 1) synthHop = 1;
     if (synthHop > PV_FFT_SIZE) synthHop = PV_FFT_SIZE;
@@ -221,9 +219,7 @@ void VCPluginDSP::processChannelPV(float* input, float* output, int numSamples, 
     float* synthPhase = mPVState[channel].synthPhase.data();
 
     // Zero the output
-    for (int i = 0; i < numSamples; ++i) {
-        output[i] = 0.0f;
-    }
+    std::fill(output, output + numSamples, 0.0f);
 
     // Process the input in overlapping frames
     int numFrames = 1;
@@ -245,9 +241,8 @@ void VCPluginDSP::processChannelPV(float* input, float* output, int numSamples, 
         // Forward FFT
         fft(mFFTReal.data(), mFFTImag.data(), PV_FFT_SIZE, false);
 
-        // Compute magnitude and phase, then process
-        // We need temporary storage for magnitudes
-        float magnitude[2048 / 2 + 1]; // PV_FFT_SIZE_2 = 1025
+        // Compute magnitude and phase, process phase vocoder
+        float magnitude[2048 / 2 + 1];  // PV_FFT_SIZE_2 = 1025
 
         for (int k = 0; k < PV_FFT_SIZE_2; ++k) {
             magnitude[k] = std::sqrt(mFFTReal[k] * mFFTReal[k] + mFFTImag[k] * mFFTImag[k]);
@@ -255,8 +250,6 @@ void VCPluginDSP::processChannelPV(float* input, float* output, int numSamples, 
 
             // Phase difference and unwrapping
             float phaseDiff = phase - prevPhase[k];
-
-            // Remove expected phase advance
             phaseDiff -= expectedPhaseInc * static_cast<float>(k);
 
             // Wrap to [-pi, pi]
@@ -281,18 +274,14 @@ void VCPluginDSP::processChannelPV(float* input, float* output, int numSamples, 
 
         // Formant preservation: resample magnitude to preserve spectral envelope
         if (mParams.formant) {
-            // Save the pitch-shifted magnitudes, then replace with
-            // interpolated magnitudes from original spectral position
             float savedMag[2048 / 2 + 1];
             for (int k = 0; k < PV_FFT_SIZE_2; ++k) {
                 savedMag[k] = magnitude[k];
             }
-            // Resample magnitudes: for output bin k, find input bin at k / ratio
             for (int k = 0; k < PV_FFT_SIZE_2; ++k) {
                 float srcBin = static_cast<float>(k) / pitchRatio;
                 int srcIdx0 = static_cast<int>(srcBin);
                 int srcIdx1 = srcIdx0 + 1;
-
                 if (srcIdx0 >= 0 && srcIdx1 < PV_FFT_SIZE_2) {
                     float frac = srcBin - static_cast<float>(srcIdx0);
                     magnitude[k] = savedMag[srcIdx0] * (1.0f - frac) + savedMag[srcIdx1] * frac;
@@ -353,9 +342,19 @@ void VCPluginDSP::processInternal(float* left, float* right, int numSamples)
         return;  // Bypass: no shift
     }
 
-    // Process each channel independently
-    processChannelPV(left, left, numSamples, 0);
-    processChannelPV(right, right, numSamples, 1);
+    // Ensure input copy buffers are large enough
+    if ((int)mInputCopy[0].size() < numSamples) {
+        mInputCopy[0].resize(numSamples);
+        mInputCopy[1].resize(numSamples);
+    }
+
+    // Copy input to separate buffers (processChannelPV needs input != output)
+    std::copy(left, left + numSamples, mInputCopy[0].data());
+    std::copy(right, right + numSamples, mInputCopy[1].data());
+
+    // Process each channel independently using the copies
+    processChannelPV(mInputCopy[0].data(), left, numSamples, 0);
+    processChannelPV(mInputCopy[1].data(), right, numSamples, 1);
 }
 
 //==============================================================================
