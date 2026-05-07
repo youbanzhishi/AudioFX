@@ -1,93 +1,65 @@
-# VC-Plugin-Template
+# VC-MultiBand
 
-基于 **JUCE 8** + **CMake** 的 VST3 音频插件开发模板。包含完整的 **三层架构**（DSP/CLI/VST3）和 **双 CLI**（JUCE版本 + 零依赖Standalone版本）。
+VocalChain系列独立多段分频处理插件。基于**LR4 Linkwitz-Riley 24dB/oct**分频器，将信号分成4个频段，每频段独立增益和压缩处理。
 
 ## 核心特性
 
-- **三层架构**: DSP核心层 → CLI命令行层 → VST3插件层
-- **双CLI支持**: 
-  - `VC-Plugin-CLI`: 使用JUCE读写WAV（需要链接JUCE库）
-  - `VC-Plugin-CLI-Standalone`: 使用dr_wav（零外部依赖）
-- **条件编译**: DSP代码可在JUCE模式和Standalone模式间切换
-- **CI/CD就绪**: 包含GitHub Actions工作流配置
+- **4频段LR4分频**：24dB/oct Linkwitz-Riley，相位一致
+- **可调分频点**：3个分频频率独立可调（默认120/1000/8000Hz）
+- **每频段增益**：独立增益控制（dB）
+- **每频段压缩器**：简化压缩器（阈值+比率）
+- **Solo/Mute**：频段独奏和静音
+- **幅度完美重建**：LR4保证分频后合路幅度响应平坦
+
+## 频段划分
+
+| 频段 | 范围 | 默认分频点 |
+|------|------|-----------|
+| Low | < xover1 | < 120Hz |
+| Mid-Low | xover1 - xover2 | 120Hz - 1kHz |
+| Mid-High | xover2 - xover3 | 1kHz - 8kHz |
+| High | > xover3 | > 8kHz |
+
+## 架构
+
+```
+Input → [LR4 Split] → Low ─────→ [Gain] → [Comp] → ─┐
+                    → Mid-Low ─→ [Gain] → [Comp] → ─┤
+                    → Mid-High → [Gain] → [Comp] → ─┤→ [Sum] → Output
+                    → High ────→ [Gain] → [Comp] → ─┘
+```
 
 ## 目录结构
 
 ```
-VC-Plugin-Template/
+VC-MultiBand/
 ├── CMakeLists.txt                      # 构建配置（3个target）
-├── .gitignore                           # Git忽略规则
-├── README.md                            # 本文件
 ├── Source/
 │   ├── DSP/
-│   │   ├── VCPluginDSP.h               # DSP核心头文件
+│   │   ├── VCPluginDSP.h               # DSP核心头文件（LR4分频+压缩器）
 │   │   └── VCPluginDSP.cpp             # DSP核心实现
 │   ├── CLI/
-│   │   └── main.cpp                    # JUCE版CLI（依赖JUCE）
+│   │   └── main.cpp                    # JUCE版CLI
 │   ├── CLI_Standalone/
 │   │   └── main.cpp                    # Standalone版CLI（dr_wav）
-│   ├── PluginProcessor.h               # VST3处理器头文件
-│   ├── PluginProcessor.cpp              # VST3处理器实现
-│   ├── PluginEditor.h                   # VST3编辑器头文件
-│   └── PluginEditor.cpp                # VST3编辑器实现
-└── .github/workflows/                   # CI/CD配置（从根目录同步）
+│   ├── PluginProcessor.h/cpp           # VST3处理器
+│   └── PluginEditor.h/cpp              # VST3编辑器
+└── README.md
 ```
 
-## 快速开始
+## 编译
 
-### 1. 复制模板
+### Standalone CLI（零依赖，推荐测试）
 
 ```bash
-cd /tmp/AudioFX
-cp -r VC-Plugin-Template VC-MyPlugin
-cd VC-MyPlugin
+cd /tmp/AudioFX/VC-MultiBand
+g++ -std=c++17 -DVC_STANDALONE -O2 \
+    -I/tmp/AudioFX/Libs/dr_wav \
+    Source/CLI_Standalone/main.cpp Source/DSP/VCPluginDSP.cpp \
+    -o VC-MultiBand-CLI-Standalone -lm
 ```
 
-### 2. 替换占位符
-
-**必须替换的占位符**（在所有`.cpp`和`.h`文件中）：
-
-| 占位符 | 说明 | 示例 |
-|--------|------|------|
-| `__PLUGIN_NAME__` | 插件名称 | `VC-MyPlugin` |
-| `__PLUGIN_CODE__` | 4字符插件代码 | `VCMP` |
-| `__MANUFACTURER_CODE__` | 4字符厂商代码 | `VCAU` |
-
-**自动替换命令**：
-
-```bash
-# 定义变量
-PLUGIN_NAME="VC-MyPlugin"
-PLUGIN_CODE="VCMP"
-MANUFACTURER_CODE="VCAU"
-
-# 替换所有占位符
-find . -type f \( -name "*.cpp" -o -name "*.h" -o -name "CMakeLists.txt" \) \
-    -exec sed -i "s/__PLUGIN_NAME__/${PLUGIN_NAME}/g" {} \;
-find . -type f \( -name "*.cpp" -o -name "*.h" -o -name "CMakeLists.txt" \) \
-    -exec sed -i "s/__PLUGIN_CODE__/${PLUGIN_CODE}/g" {} \;
-find . -type f \( -name "*.cpp" -o -name "*.h" -o -name "CMakeLists.txt" \) \
-    -exec sed -i "s/__MANUFACTURER_CODE__/${MANUFACTURER_CODE}/g" {} \;
-```
-
-### 3. 实现DSP算法
-
-在 `Source/DSP/VCPluginDSP.h/cpp` 中实现你的DSP算法：
-
-```cpp
-// VCPluginDSP.h - 定义参数结构
-struct Params {
-    float gainDB = 0.0f;      // 修改为你的参数
-    float mix = 100.0f;
-    bool enabled = true;
-};
-
-// VCPluginDSP.cpp - 实现process()或processIIR()
-```
-
-### 4. 编译
-
-#### 方式一：编译所有目标
+### CMake全量编译
 
 ```bash
 mkdir build && cd build
@@ -95,147 +67,108 @@ cmake .. -DJUCE_PATH=/opt/JUCE -DCMAKE_BUILD_TYPE=Release
 cmake --build . --config Release
 ```
 
-#### 方式二：只编译特定目标
+## CLI使用
+
+### 分频点控制
 
 ```bash
-# 只编译Standalone CLI（最快，无需JUCE依赖）
-mkdir build && cd build
-cmake .. -DJUCE_PATH=/opt/JUCE -DCMAKE_BUILD_TYPE=Release
-cmake --build . --target VC-MyPlugin-CLI-Standalone
-
-# 只编译VST3插件
-cmake --build . --target VC-MyPlugin
+# 自定义分频点
+./VC-MultiBand-CLI-Standalone in.wav out.wav --xover1 80 --xover2 500 --xover3 5000
 ```
 
-## 使用CLI
-
-### Standalone CLI（推荐）
+### 每频段增益（4个逗号分隔值：Low,Mid-Low,Mid-High,High）
 
 ```bash
-# 基本用法
-./build/CLI_Standalone/VC-MyPlugin-CLI-Standalone input.wav output.wav
-
-# 使用预设
-./build/CLI_Standalone/VC-MyPlugin-CLI-Standalone input.wav output.wav --preset bypass
-
-# 自定义参数
-./build/CLI_Standalone/VC-MyPlugin-CLI-Standalone input.wav output.wav --gain 6.0 --mix 75
-
-# 帮助
-./build/CLI_Standalone/VC-MyPlugin-CLI-Standalone --help
+# 低频-6dB，中高频+3dB
+./VC-MultiBand-CLI-Standalone in.wav out.wav --band-gain -6,0,+3,0
 ```
 
-### JUCE CLI
+### 每频段压缩
 
 ```bash
-./build/CLI/VC-MyPlugin-CLI input.wav output.wav --gain 3.0
+# 中高频和高频压缩
+./VC-MultiBand-CLI-Standalone in.wav out.wav \
+    --band-threshold 0,0,-10,-20 \
+    --band-ratio 1,1,3,4
 ```
 
-## JUCE 8 踩坑经验汇总
+### Solo/Mute
 
-### ⚠️ 重要注意事项
+```bash
+# 独奏低频段
+./VC-MultiBand-CLI-Standalone in.wav out.wav --solo-band 1
 
-1. **inputBuses[] 返回值非引用**
-   ```cpp
-   // ❌ 错误：编译报错
-   auto& inputLayout = layouts.inputBuses[0];
-   
-   // ✅ 正确：按值捕获
-   const auto inputLayout = layouts.inputBuses[0];
-   ```
+# 静音高频段
+./VC-MultiBand-CLI-Standalone in.wav out.wav --mute-band 4
 
-2. **createWriterFor 需要6个参数**
-   ```cpp
-   // ❌ 错误：只有5个参数
-   writer = wavFmt.createWriterFor(stream, sampleRate, channels, 32, {});
-   
-   // ✅ 正确：6个参数，第5个是StringPairArray，第6个quality传0
-   writer = wavFmt.createWriterFor(stream, sampleRate, channels, 32, {}, 0);
-   ```
-
-3. **metadata 类型是 StringPairArray，不是 StringArray**
-   ```cpp
-   // ❌ 错误：StringArray不是正确类型
-   StringArray metadata;
-   
-   // ✅ 正确：空的大括号会创建StringPairArray
-   writer = wavFmt.createWriterFor(..., {});
-   ```
-
-4. **BusesProperties 必须传基类构造函数**
-   ```cpp
-   // ❌ 错误：局部变量
-   BusesProperties buses;
-   buses.withInput(...);
-   
-   // ✅ 正确：传基类构造函数
-   AudioProcessor(BusesProperties()
-       .withInput("Input", AudioChannelSet::stereo())
-       .withOutput("Output", AudioChannelSet::stereo()))
-   ```
-
-5. **AudioBlock 缓冲区必须非交错布局**
-   ```cpp
-   // ✅ 正确：先复制到非交错缓冲区
-   float* leftBuf = mInternalBuffer.data();
-   float* rightBuf = mInternalBuffer.data() + numSamples;
-   for (int i = 0; i < numSamples; ++i) {
-       leftBuf[i] = left[i];
-       rightBuf[i] = right[i];
-   }
-   juce::dsp::AudioBlock<float> block(mInternalPtrs.data(), 2, numSamples);
-   
-   // ❌ 错误：直接用交错缓冲区假装非交错
-   ```
-
-6. **getInputChannelSet(1) 已在JUCE 8中移除**
-   ```cpp
-   // ❌ 错误：方法不存在
-   layouts.getInputChannelSet(1);
-   
-   // ✅ 正确：使用inputBuses[1]
-   if (layouts.inputBuses.size() > 1) {
-       auto sidechain = layouts.inputBuses[1];
-   }
-   ```
-
-## 条件编译
-
-DSP代码支持JUCE和Standalone两种编译模式：
-
-```cpp
-#ifdef VC_STANDALONE
-// Standalone模式：使用标准库，无JUCE依赖
-#include <vector>
-#include <cmath>
-#else
-// JUCE模式：使用JUCE DSP模块
-#include <juce_dsp/juce_dsp.h>
-#endif
+# 多频段静音
+./VC-MultiBand-CLI-Standalone in.wav out.wav --mute-band 3 --mute-band 4
 ```
 
-## CI/CD
+### 预设
 
-模板已配置GitHub Actions工作流：
+| 预设名 | 说明 |
+|--------|------|
+| bypass | 旁路（直通） |
+| de-ess | 去齿音：压缩高频段 |
+| loudness-plus | 等响度补偿：提升低频和高频 |
+| vocal-balance | 人声平衡：提升中高频，压缩低频 |
+| solo-low | 独听低频段 |
+| mute-high | 静音高频段 |
 
-- **多平台构建**: macOS, Windows, Ubuntu
-- **自动化测试**: CLI功能测试
-- **发布管理**: 支持GitHub Release
+```bash
+./VC-MultiBand-CLI-Standalone in.wav out.wav --preset de-ess
+```
 
-详见 `.github/workflows/build.yml`（从仓库根目录同步）。
+## LR4分频技术说明
+
+### Linkwitz-Riley 4阶分频
+
+LR4 = 两个相同的2阶Butterworth滤波器级联（Q=0.7071）：
+- LP: 两个2阶Butterworth低通级联 → 24dB/oct衰减
+- HP: 两个2阶Butterworth高通级联 → 24dB/oct衰减
+
+### 幅度重建特性
+
+LR4分频的LP+HP总和在幅度上完美重建（全频段0dB），但存在全通相位偏移。
+这是标准行为，所有专业多段处理器均采用此方式。相位偏移在音频处理中不可察觉。
+
+### 2阶Butterworth系数
+
+```
+omega = 2π·fc/fs
+cosW = cos(omega), sinW = sin(omega)
+alpha = sinW / (2·Q), Q = 0.7071
+
+LP: b0=(1-cosW)/2, b1=1-cosW, b2=(1-cosW)/2
+    a0=1+alpha, a1=-2·cosW, a2=1-alpha
+
+HP: b0=(1+cosW)/2, b1=-(1+cosW), b2=(1+cosW)/2
+    a0=1+alpha, a1=-2·cosW, a2=1-alpha
+```
+
+## 测试验证
+
+```bash
+# 编译
+g++ -std=c++17 -DVC_STANDALONE -O2 \
+    -I/tmp/AudioFX/Libs/dr_wav \
+    Source/CLI_Standalone/main.cpp Source/DSP/VCPluginDSP.cpp \
+    -o VC-MultiBand-CLI-Standalone -lm
+
+# 功能测试
+./VC-MultiBand-CLI-Standalone test.wav out.wav --preset bypass
+./VC-MultiBand-CLI-Standalone test.wav out.wav --band-gain -6,+3,+2,-6
+./VC-MultiBand-CLI-Standalone test.wav out.wav --solo-band 1
+./VC-MultiBand-CLI-Standalone test.wav out.wav --mute-band 4
+./VC-MultiBand-CLI-Standalone test.wav out.wav --band-threshold 0,0,-10,-20 --band-ratio 1,1,3,4
+```
 
 ## 依赖
 
 - **JUCE 8.0+**（用于VST3和JUCE CLI）
 - **CMake 3.22+**
 - **dr_wav**（已包含在 `../Libs/dr_wav/`）
-- 支持VST3的DAW（REAPER, Ableton Live, Cubase等）
-
-## 参考项目
-
-- [VC-EQ](https://github.com/youbanzhishi/AudioFX) - 5频段参量均衡器
-- [VC-Comp](https://github.com/youbanzhishi/AudioFX) - 侧链压缩器
-- [VC-Smooth](https://github.com/youbanzhishi/AudioFX) - 频谱共振抑制器
 
 ## 许可
 
