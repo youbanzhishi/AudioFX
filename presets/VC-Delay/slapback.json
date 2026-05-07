@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "plugin": "VC-Delay",
+  "preset_name": "slapback",
+  "author": "VC-Team",
+  "description": "Short slapback delay for rockabilly and rock vocals",
+  "tags": [
+    "slapback",
+    "short",
+    "vocal",
+    "rock"
+  ],
+  "parameters": {
+    "time": 60,
+    "feedback": 15,
+    "mix": 25
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "plugin": "VC-Reverb",
+  "preset_name": "ambience",
+  "author": "VC-Team",
+  "description": "Short ambience reverb for natural space",
+  "tags": ["ambience", "natural", "short"],
+  "parameters": {
+    "room": 35,
+    "decay": 15,
+    "damping": 55,
+    "predelay": 8,
+    "mix": 15,
+    "wetlpf": 9000,
+    "wethpf": 200
+  }
+}

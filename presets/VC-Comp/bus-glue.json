@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "plugin": "VC-Comp",
+  "preset_name": "bus-glue",
+  "author": "VC-Team",
+  "description": "Mix bus glue compression for cohesive mix",
+  "tags": ["bus", "glue", "mix", "cohesive"],
+  "parameters": {
+    "threshold": -6,
+    "ratio": 2,
+    "attack": 30,
+    "release": 300,
+    "gain": 1,
+    "knee": "soft",
+    "character": "warm",
+    "mix": 100
+  }
+}

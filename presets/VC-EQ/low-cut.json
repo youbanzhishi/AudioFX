@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0",
+  "plugin": "VC-EQ",
+  "preset_name": "low-cut",
+  "author": "VC-Team",
+  "description": "Simple high-pass filter to remove low-frequency rumble",
+  "tags": ["high-pass", "rumble", "clean"],
+  "parameters": {
+    "band0-freq": 100,
+    "band0-type": 4,
+    "band0-gain": 0,
+    "band0-q": 0.7,
+    "band0-on": 1,
+    "band1-on": 0,
+    "band2-on": 0,
+    "band3-on": 0,
+    "band4-on": 0
+  }
+}

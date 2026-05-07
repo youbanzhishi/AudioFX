@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "plugin": "VC-Limiter",
+  "preset_name": "gentle-limit",
+  "author": "VC-Team",
+  "description": "Gentle limiter for subtle peak control",
+  "tags": [
+    "limiter",
+    "gentle",
+    "peak-control"
+  ],
+  "parameters": {
+    "threshold": -3,
+    "ceiling": -0.5,
+    "release": 100,
+    "mix": 100
+  }
+}

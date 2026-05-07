@@ -1,0 +1,20 @@
+{
+  "schema_version": "1.0",
+  "plugin": "VC-Delay",
+  "preset_name": "dotted-eighth",
+  "author": "VC-Team",
+  "description": "Dotted eighth note delay synced to tempo",
+  "tags": [
+    "dotted",
+    "sync",
+    "tempo",
+    "rhythmic"
+  ],
+  "parameters": {
+    "sync-bpm": 120,
+    "note": 8,
+    "dotted": 1,
+    "feedback": 40,
+    "mix": 35
+  }
+}

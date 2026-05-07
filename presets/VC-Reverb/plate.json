@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "plugin": "VC-Reverb",
+  "preset_name": "plate",
+  "author": "VC-Team",
+  "description": "Bright plate reverb for vocals and snare",
+  "tags": ["plate", "bright", "vocal", "snare"],
+  "parameters": {
+    "room": 50,
+    "decay": 45,
+    "damping": 25,
+    "predelay": 5,
+    "mix": 30,
+    "wetlpf": 14000,
+    "wethpf": 300
+  }
+}

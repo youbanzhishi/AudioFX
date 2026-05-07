@@ -31,3 +31,4 @@ test_*.wav
 
 # Test audio directory
 test_audio/
+__pycache__/

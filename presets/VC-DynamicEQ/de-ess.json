@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "plugin": "VC-DynamicEQ",
+  "preset_name": "de-ess",
+  "author": "VC-Team",
+  "description": "Dynamic EQ de-esser targeting sibilance",
+  "tags": ["dynamic-eq", "de-esser", "sibilance"],
+  "parameters": {
+    "bands": 1,
+    "band-freq": "6500",
+    "band-q": "2.0",
+    "band-type": "bell",
+    "band-threshold": "-20",
+    "band-ratio": "4",
+    "band-attack": "5",
+    "band-release": "50"
+  }
+}

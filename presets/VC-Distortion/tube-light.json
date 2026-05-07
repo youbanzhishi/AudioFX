@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0",
+  "plugin": "VC-Distortion",
+  "preset_name": "tube-light",
+  "author": "VC-Team",
+  "description": "Light tube warmth with subtle breakup",
+  "tags": ["distortion", "tube", "light", "warm"],
+  "parameters": {
+    "type": 0,
+    "drive": 25,
+    "mix": 100,
+    "tone": 50,
+    "makeup": 0
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "plugin": "VC-Reverb",
+  "preset_name": "small-room",
+  "author": "VC-Team",
+  "description": "Tight small room reverb for subtle space",
+  "tags": ["room", "small", "subtle"],
+  "parameters": {
+    "room": 25,
+    "decay": 20,
+    "damping": 60,
+    "predelay": 10,
+    "mix": 20,
+    "wetlpf": 10000,
+    "wethpf": 200
+  }
+}

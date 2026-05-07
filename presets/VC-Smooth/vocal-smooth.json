@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "plugin": "VC-Smooth",
+  "preset_name": "vocal-smooth",
+  "author": "VC-Team",
+  "description": "Spectral smoothing for vocal resonance control",
+  "tags": ["smooth", "resonance", "vocal"],
+  "parameters": {
+    "depth": 0.4,
+    "speed": 2.0,
+    "freq-low": 200,
+    "freq-high": 12000,
+    "sharpness": 1.5,
+    "mix": 0.8,
+    "input-gain": 0,
+    "output-gain": 0
+  }
+}

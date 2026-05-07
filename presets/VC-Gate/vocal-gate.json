@@ -1,0 +1,22 @@
+{
+  "schema_version": "1.0",
+  "plugin": "VC-Gate",
+  "preset_name": "vocal-gate",
+  "author": "VC-Team",
+  "description": "Vocal noise gate for removing background noise between phrases",
+  "tags": [
+    "gate",
+    "vocal",
+    "noise",
+    "clean"
+  ],
+  "parameters": {
+    "threshold": -35,
+    "ratio": 10,
+    "attack": 1,
+    "hold": 100,
+    "release": 150,
+    "range": -60,
+    "hysteresis": 6
+  }
+}

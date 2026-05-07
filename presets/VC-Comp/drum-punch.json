@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "plugin": "VC-Comp",
+  "preset_name": "drum-punch",
+  "author": "VC-Team",
+  "description": "Punchy drum compression with fast attack and release",
+  "tags": ["drums", "punch", "aggressive"],
+  "parameters": {
+    "threshold": -10,
+    "ratio": 4,
+    "attack": 5,
+    "release": 80,
+    "gain": 2,
+    "knee": "hard",
+    "character": "warm",
+    "mix": 100
+  }
+}

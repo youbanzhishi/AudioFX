@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0",
+  "plugin": "VC-Distortion",
+  "preset_name": "fuzz",
+  "author": "VC-Team",
+  "description": "Aggressive fuzz distortion for guitar",
+  "tags": ["distortion", "fuzz", "aggressive", "guitar"],
+  "parameters": {
+    "type": 3,
+    "drive": 75,
+    "mix": 100,
+    "tone": 40,
+    "makeup": -3
+  }
+}

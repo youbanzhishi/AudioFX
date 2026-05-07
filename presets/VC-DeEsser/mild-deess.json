@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0",
+  "plugin": "VC-DeEsser",
+  "preset_name": "mild-deess",
+  "author": "VC-Team",
+  "description": "Mild de-essing for subtle sibilance control",
+  "tags": [
+    "de-esser",
+    "sibilance",
+    "mild",
+    "vocal"
+  ],
+  "parameters": {
+    "threshold": -24,
+    "frequency": 6000,
+    "reduction": -6,
+    "mix": 100
+  }
+}

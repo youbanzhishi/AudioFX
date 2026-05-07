@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AudioFX Preset Format",
+  "description": "Unified preset file format for all VC-Series audio plugins",
+  "type": "object",
+  "required": ["schema_version", "plugin", "preset_name", "parameters"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+$",
+      "description": "Preset format version, e.g. '1.0'"
+    },
+    "plugin": {
+      "type": "string",
+      "description": "Plugin name, must match VC-* directory name, e.g. 'VC-Reverb'"
+    },
+    "preset_name": {
+      "type": "string",
+      "description": "Human-readable preset name, e.g. 'Large Hall'"
+    },
+    "author": {
+      "type": "string",
+      "description": "Preset creator (optional)",
+      "default": ""
+    },
+    "description": {
+      "type": "string",
+      "description": "Brief description of the preset (optional)",
+      "default": ""
+    },
+    "tags": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Searchable tags, e.g. ['vocal', 'warm']",
+      "default": []
+    },
+    "parameters": {
+      "type": "object",
+      "description": "Plugin-specific parameters as key-value pairs. Keys must match CLI option names (without --). Values are numbers, strings, or arrays.",
+      "additionalProperties": {
+        "oneOf": [
+          {"type": "number"},
+          {"type": "string"},
+          {"type": "array", "items": {"type": "number"}},
+          {"type": "array", "items": {"type": "string"}}
+        ]
+      }
+    }
+  }
+}

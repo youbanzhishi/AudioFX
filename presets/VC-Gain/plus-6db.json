@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "plugin": "VC-Gain",
+  "preset_name": "plus-6db",
+  "author": "VC-Team",
+  "description": "Simple +6dB gain utility",
+  "tags": [
+    "gain",
+    "utility",
+    "boost"
+  ],
+  "parameters": {
+    "gain": 6,
+    "mix": 100
+  }
+}

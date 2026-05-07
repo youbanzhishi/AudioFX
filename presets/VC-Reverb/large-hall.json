@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "plugin": "VC-Reverb",
+  "preset_name": "large-hall",
+  "author": "VC-Team",
+  "description": "Large hall reverb for orchestral and ambient",
+  "tags": ["hall", "large", "orchestral", "ambient"],
+  "parameters": {
+    "room": 85,
+    "decay": 70,
+    "damping": 40,
+    "predelay": 30,
+    "mix": 35,
+    "wetlpf": 8000,
+    "wethpf": 150
+  }
+}

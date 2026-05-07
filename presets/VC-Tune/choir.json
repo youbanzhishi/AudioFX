@@ -1,0 +1,22 @@
+{
+  "schema_version": "1.0",
+  "plugin": "VC-Tune",
+  "preset_name": "choir",
+  "author": "VC-Team",
+  "description": "Choir-style pitch correction with scale quantization",
+  "tags": [
+    "choir",
+    "harmony",
+    "scale"
+  ],
+  "parameters": {
+    "speed": 60,
+    "scale": 1,
+    "transpose": 0,
+    "cents": 0,
+    "formant-preserve": 80,
+    "formant-shift": 0,
+    "vibrato-preserve": 40,
+    "transition-smooth": 40
+  }
+}

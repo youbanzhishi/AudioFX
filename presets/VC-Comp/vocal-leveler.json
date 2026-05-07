@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "plugin": "VC-Comp",
+  "preset_name": "vocal-leveler",
+  "author": "VC-Team",
+  "description": "Gentle vocal leveling for consistent volume",
+  "tags": ["vocal", "leveling", "gentle"],
+  "parameters": {
+    "threshold": -18,
+    "ratio": 2.5,
+    "attack": 20,
+    "release": 200,
+    "gain": 3,
+    "knee": "soft",
+    "character": "clean",
+    "mix": 100
+  }
+}

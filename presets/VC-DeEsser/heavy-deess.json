@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0",
+  "plugin": "VC-DeEsser",
+  "preset_name": "heavy-deess",
+  "author": "VC-Team",
+  "description": "Heavy de-essing for aggressive sibilance control",
+  "tags": [
+    "de-esser",
+    "sibilance",
+    "heavy",
+    "aggressive"
+  ],
+  "parameters": {
+    "threshold": -30,
+    "frequency": 7000,
+    "reduction": -12,
+    "mix": 100
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "plugin": "VC-Saturator",
+  "preset_name": "warm-sat",
+  "author": "VC-Team",
+  "description": "Warm tape saturation for analog feel",
+  "tags": [
+    "saturation",
+    "warm",
+    "tape",
+    "analog"
+  ],
+  "parameters": {
+    "drive": 6,
+    "algorithm": 0,
+    "mix": 100
+  }
+}

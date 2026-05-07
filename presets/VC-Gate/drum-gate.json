@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0",
+  "plugin": "VC-Gate",
+  "preset_name": "drum-gate",
+  "author": "VC-Team",
+  "description": "Drum gate for tight drum kit bleed control",
+  "tags": [
+    "gate",
+    "drums",
+    "tight"
+  ],
+  "parameters": {
+    "threshold": -25,
+    "ratio": 20,
+    "attack": 0.5,
+    "hold": 30,
+    "release": 50,
+    "range": -80,
+    "hysteresis": 8
+  }
+}

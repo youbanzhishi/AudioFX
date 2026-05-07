@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "plugin": "VC-Delay",
+  "preset_name": "echo",
+  "author": "VC-Team",
+  "description": "Classic echo delay with medium feedback",
+  "tags": [
+    "echo",
+    "classic",
+    "medium"
+  ],
+  "parameters": {
+    "time": 300,
+    "feedback": 40,
+    "mix": 35
+  }
+}

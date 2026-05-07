@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0",
+  "plugin": "VC-Delay",
+  "preset_name": "ping-pong",
+  "author": "VC-Team",
+  "description": "Stereo ping-pong delay for wide spatial effect",
+  "tags": [
+    "ping-pong",
+    "stereo",
+    "wide",
+    "spatial"
+  ],
+  "parameters": {
+    "time": 250,
+    "feedback": 35,
+    "mix": 40,
+    "ping-pong": 1
+  }
+}

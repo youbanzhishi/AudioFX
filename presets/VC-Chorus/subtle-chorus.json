@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0",
+  "plugin": "VC-Chorus",
+  "preset_name": "subtle-chorus",
+  "author": "VC-Team",
+  "description": "Subtle chorus for gentle thickening",
+  "tags": [
+    "chorus",
+    "subtle",
+    "thickening"
+  ],
+  "parameters": {
+    "rate": 0.8,
+    "depth": 30,
+    "voices": 3,
+    "mix": 30,
+    "delay": 15,
+    "width": 60,
+    "feedback": 0.1
+  }
+}

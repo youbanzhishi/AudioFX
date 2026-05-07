@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "plugin": "VC-Tune",
+  "preset_name": "natural-fix",
+  "author": "VC-Team",
+  "description": "Subtle natural pitch correction for fixing off-notes",
+  "tags": [
+    "vocal",
+    "natural",
+    "correction",
+    "subtle"
+  ],
+  "parameters": {
+    "speed": 30,
+    "scale": 0,
+    "transpose": 0,
+    "cents": 0,
+    "formant-preserve": 100,
+    "formant-shift": 0,
+    "vibrato-preserve": 80,
+    "transition-smooth": 60
+  }
+}

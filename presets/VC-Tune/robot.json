@@ -1,0 +1,22 @@
+{
+  "schema_version": "1.0",
+  "plugin": "VC-Tune",
+  "preset_name": "robot",
+  "author": "VC-Team",
+  "description": "Robot voice effect with zero vibrato and max correction speed",
+  "tags": [
+    "robot",
+    "effect",
+    "synthetic"
+  ],
+  "parameters": {
+    "speed": 100,
+    "scale": 0,
+    "transpose": 0,
+    "cents": 0,
+    "formant-preserve": 0,
+    "formant-shift": 0,
+    "vibrato-preserve": 0,
+    "transition-smooth": 0
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "plugin": "VC-Comp",
+  "preset_name": "limiting",
+  "author": "VC-Team",
+  "description": "Heavy limiting for maximum loudness",
+  "tags": ["limiter", "loudness", "brick-wall"],
+  "parameters": {
+    "threshold": -3,
+    "ratio": 20,
+    "attack": 1,
+    "release": 50,
+    "gain": 6,
+    "knee": "hard",
+    "character": "clean",
+    "mix": 100
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "plugin": "VC-Stereo",
+  "preset_name": "widen",
+  "author": "VC-Team",
+  "description": "Stereo widening with bass mono collapse",
+  "tags": [
+    "stereo",
+    "wide",
+    "bass-mono"
+  ],
+  "parameters": {
+    "width": 140,
+    "pan": 0,
+    "mono-bass": 1,
+    "bass-freq": 120
+  }
+}

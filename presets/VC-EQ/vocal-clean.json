@@ -1,0 +1,39 @@
+{
+  "schema_version": "1.0",
+  "plugin": "VC-EQ",
+  "preset_name": "vocal-clean",
+  "author": "VC-Team",
+  "description": "Clean vocal EQ: low-cut rumble, presence boost, air",
+  "tags": [
+    "vocal",
+    "clean",
+    "presence"
+  ],
+  "parameters": {
+    "band0-freq": 80,
+    "band0-type": 4,
+    "band0-gain": 0,
+    "band0-q": 0.7,
+    "band0-on": 1,
+    "band1-freq": 250,
+    "band1-type": 2,
+    "band1-gain": -2,
+    "band1-q": 1.0,
+    "band1-on": 1,
+    "band2-freq": 3000,
+    "band2-type": 2,
+    "band2-gain": 2.5,
+    "band2-q": 1.2,
+    "band2-on": 1,
+    "band3-freq": 5000,
+    "band3-type": 2,
+    "band3-gain": 1.5,
+    "band3-q": 1.5,
+    "band3-on": 1,
+    "band4-freq": 12000,
+    "band4-type": 1,
+    "band4-gain": 2,
+    "band4-q": 0.7,
+    "band4-on": 1
+  }
+}

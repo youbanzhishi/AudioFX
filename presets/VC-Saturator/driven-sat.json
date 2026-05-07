@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "plugin": "VC-Saturator",
+  "preset_name": "driven-sat",
+  "author": "VC-Team",
+  "description": "Driven tube saturation for aggressive coloration",
+  "tags": [
+    "saturation",
+    "driven",
+    "tube",
+    "aggressive"
+  ],
+  "parameters": {
+    "drive": 12,
+    "algorithm": 1,
+    "mix": 100
+  }
+}

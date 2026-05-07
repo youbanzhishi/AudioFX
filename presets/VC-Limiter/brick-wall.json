@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0",
+  "plugin": "VC-Limiter",
+  "preset_name": "brick-wall",
+  "author": "VC-Team",
+  "description": "Brick-wall limiter for maximum loudness without clipping",
+  "tags": [
+    "limiter",
+    "brick-wall",
+    "loudness",
+    "mastering"
+  ],
+  "parameters": {
+    "threshold": -6,
+    "ceiling": -0.3,
+    "release": 30,
+    "mix": 100
+  }
+}

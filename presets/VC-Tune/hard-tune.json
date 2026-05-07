@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "plugin": "VC-Tune",
+  "preset_name": "hard-tune",
+  "author": "VC-Team",
+  "description": "Hard-tune / T-Pain style aggressive pitch correction",
+  "tags": [
+    "hard-tune",
+    "tpain",
+    "aggressive",
+    "electronic"
+  ],
+  "parameters": {
+    "speed": 95,
+    "scale": 1,
+    "transpose": 0,
+    "cents": 0,
+    "formant-preserve": 100,
+    "formant-shift": 0,
+    "vibrato-preserve": 0,
+    "transition-smooth": 10
+  }
+}
