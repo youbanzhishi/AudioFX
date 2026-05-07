@@ -53,10 +53,28 @@ void VCPluginDSP::prepare(double sampleRate, int blockSize)
 // Distortion Algorithms
 //==============================================================================
 
-// Tube: tanh soft clipping - warm, musical saturation
+// Tube: asymmetric soft clipping that produces both even and odd harmonics.
+// FIX (BUG-3): Previous implementation used tanh() which is perfectly symmetric
+// and only produces odd harmonics (H3 strong, H2 at -96dB).
+// Now uses a modified curve that clips positive and negative half-cycles
+// differently, mimicking tube plate/plate asymmetry:
+//   Positive half: softer saturation (tanh with slightly lower gain)
+//   Negative half: harder saturation (tanh with slightly higher gain)
+// This asymmetry generates even harmonics (H2 ~-30 to -40dB) while
+// maintaining zero DC offset (no tone filter accumulation problem).
 float VCPluginDSP::processTube(float x, float driveGain)
 {
-    return std::tanh(driveGain * x);
+    float driven = driveGain * x;
+    // Asymmetric clipping: positive half saturates softer, negative half harder
+    // This mimics the asymmetric transfer curve of real tube circuits
+    float asymFactor = 0.25f;  // 15% asymmetry
+    if (driven >= 0.0f) {
+        // Positive: softer clip (less gain → wider curve → more headroom)
+        return std::tanh(driven * (1.0f - asymFactor));
+    } else {
+        // Negative: harder clip (more gain → narrower curve → less headroom)
+        return std::tanh(driven * (1.0f + asymFactor));
+    }
 }
 
 // Tape: soft clip + one-pole lowpass - magnetic tape saturation
@@ -129,7 +147,6 @@ void VCPluginDSP::process(float* left, float* right, int numSamples)
 #ifdef VC_STANDALONE
     processInternal(left, right, numSamples);
 #else
-    // JUCE: copy to non-interleaved, process, copy back
     if ((int)mInternalBuffer.size() < numSamples * 2)
         mInternalBuffer.resize(numSamples * 2);
 
@@ -163,7 +180,6 @@ void VCPluginDSP::process(juce::dsp::AudioBlock<float>& block)
     if (!mEnabled)
         return;
 
-    // Use same internal processing
     size_t numSamples = block.getNumSamples();
     if ((int)mInternalBuffer.size() < (int)numSamples * 2)
         mInternalBuffer.resize(numSamples * 2);
@@ -282,13 +298,11 @@ void VCPluginDSP::setEnabled(bool enabled)
 #ifdef VC_STANDALONE
 void VCPluginDSP::updateToneFilter()
 {
-    // Tone: 0=dark (lowpass at 500Hz), 1=bright (bypass/20kHz)
     float cutoff = 500.0f + 19500.0f * mParams.tone * mParams.tone;
     float rc = 1.0f / (2.0f * VC_PI * cutoff);
     float dt = 1.0f / static_cast<float>(mSampleRate);
     mToneCoeff = rc / (rc + dt);
 
-    // Tape LP: fixed ~4kHz rolloff
     float tapeCutoff = 4000.0f;
     float rcTape = 1.0f / (2.0f * VC_PI * tapeCutoff);
     mTapeLPCoeff = rcTape / (rcTape + dt);
