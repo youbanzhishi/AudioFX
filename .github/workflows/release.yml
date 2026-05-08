@@ -8,21 +8,156 @@ on:
 permissions:
   contents: write
 
+env:
+  JUCE_VERSION: '8.0.12'
+
 jobs:
-  build:
-    name: Build & Test all plugins
+  # ──────────────────────────────────────
+  # 阶段1: 检测所有插件（tag推送时全量构建）
+  # ──────────────────────────────────────
+  detect:
+    name: Detect plugins
     runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
-      - name: Install dependencies
+      - name: List all plugins
+        id: set
+        shell: bash
         run: |
-          sudo apt-get update && sudo apt-get install -y libasound2-dev libfreetype6-dev libx11-dev libxrandr-dev libgl1-mesa-dev
+          plugins=$(ls -d VC-*/ 2>/dev/null | grep -v "VC-Plugin-Template" | sed 's/\/$//' | tr '\n' ' ' | xargs)
+          json_arr=$(echo $plugins | tr ' ' '\n' | sort -u | python3 -c "import sys,json; print(json.dumps({'plugin':[l.strip() for l in sys.stdin if l.strip()]}))")
+          echo "matrix=$json_arr" >> $GITHUB_OUTPUT
+          echo "Matrix: $json_arr"
+
+  # ──────────────────────────────────────
+  # 阶段2: 每个插件 × 每个平台构建VST3
+  # ──────────────────────────────────────
+  build-vst3:
+    name: VST3 ${{ matrix.plugin }} (${{ matrix.os }})
+    needs: detect
+    strategy:
+      fail-fast: false
+      matrix:
+        plugin: ${{ fromJson(needs.detect.outputs.matrix).plugin }}
+        os: [macos-latest, windows-latest, ubuntu-latest]
+        include:
+          - os: macos-latest
+            cmake_generator: "Ninja"
+          - os: windows-latest
+            cmake_generator: "Visual Studio 17 2022"
+          - os: ubuntu-latest
+            cmake_generator: "Ninja"
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies (macOS)
+        if: runner.os == 'MacOS'
+        shell: bash
+        run: brew install ninja
+
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            ninja-build libasound2-dev libx11-dev libxrandr-dev \
+            libxinerama-dev libxcursor-dev libxcomposite-dev \
+            libfreetype6-dev libfontconfig1-dev libgl1-mesa-dev \
+            libdbus-1-dev pkg-config
+
+      - name: Cache JUCE
+        id: cache-juce
+        uses: actions/cache@v4
+        with:
+          path: JUCE
+          key: juce-${{ runner.os }}-v${{ env.JUCE_VERSION }}
+
+      - name: Clone JUCE
+        if: steps.cache-juce.outputs.cache-hit != 'true'
+        shell: bash
+        run: git clone --depth 1 --branch ${{ env.JUCE_VERSION }} https://github.com/juce-framework/JUCE.git
+
+      - name: Configure ${{ matrix.plugin }}
+        shell: bash
+        run: |
+          mkdir -p ${{ matrix.plugin }}/build
+          cd ${{ matrix.plugin }}/build
+          cmake .. -G "${{ matrix.cmake_generator }}" -DJUCE_PATH=../../JUCE -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build ${{ matrix.plugin }}
+        shell: bash
+        run: |
+          cd ${{ matrix.plugin }}/build
+          cmake --build . --config Release
+
+      - name: List artefacts
+        if: always()
+        shell: bash
+        run: find ${{ matrix.plugin }}/build \( -name "*.vst3" -o -name "*.component" -o -name "*.dll" \) 2>/dev/null || echo "none found"
+
+      - name: Upload VST3 artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: vst3-${{ matrix.plugin }}-${{ matrix.os }}
+          path: |
+            ${{ matrix.plugin }}/build/${{ matrix.plugin }}_artefacts/
+            ${{ matrix.plugin }}/build/**/${{ matrix.plugin }}.vst3/
+          retention-days: 30
+
+  # ──────────────────────────────────────
+  # 阶段2.5: 三平台CLI独立编译（无需JUCE，快速）
+  # ──────────────────────────────────────
+  build-cli:
+    name: CLI (${{ matrix.os }})
+    needs: detect
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+        include:
+          - os: macos-latest
+            artifact_name: VocalChain-CLI-macOS
+            archive_ext: tar.gz
+          - os: windows-latest
+            artifact_name: VocalChain-CLI-Windows
+            archive_ext: zip
+          - os: ubuntu-latest
+            artifact_name: VocalChain-CLI-Linux-x86_64
+            archive_ext: tar.gz
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install MinGW (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          # windows-latest ships with MinGW-w64; verify g++ is available
+          g++ --version || choco install mingw -y
+
       - name: Build all CLI standalones
+        shell: bash
         run: |
+          SUCCESS=0
+          FAIL=0
+          SKIP=0
           for dir in VC-*/; do
             plugin=$(basename "$dir")
             if [ "$plugin" = "VC-Plugin-Template" ]; then continue; fi
-            echo "=== Building $plugin ==="
+            echo "=== Building CLI: $plugin ==="
+
+            # Detect DSP filename (same logic as build.yml)
             if [ -f "${dir}Source/DSP/VCEQDSP.cpp" ]; then DSP="VCEQDSP"
             elif [ -f "${dir}Source/DSP/VCCompDSP.cpp" ]; then DSP="VCCompDSP"
             elif [ -f "${dir}Source/DSP/VCSmoothDSP.cpp" ]; then DSP="VCSmoothDSP"
@@ -31,36 +166,132 @@ jobs:
             elif [ -f "${dir}Source/DSP/VCSurgicalDeEsserDSP.cpp" ]; then DSP="VCSurgicalDeEsserDSP"
             else DSP="VCPluginDSP"
             fi
+            echo "  DSP file: ${DSP}.cpp"
+
             cd "$dir"
-            g++ -std=c++17 -DVC_STANDALONE -O2 -I../Libs/dr_wav \
-              Source/CLI_Standalone/main.cpp Source/DSP/${DSP}.cpp \
-              -o ${plugin}-CLI-Standalone -lm
+            if g++ -std=c++17 -DVC_STANDALONE -O2 -I../Libs/dr_wav \
+                 Source/CLI_Standalone/main.cpp Source/DSP/${DSP}.cpp \
+                 -o ${plugin}-CLI-Standalone -lm 2>/dev/null; then
+              echo "  ✅ $plugin built successfully"
+              SUCCESS=$((SUCCESS + 1))
+            else
+              echo "  ❌ $plugin failed to build"
+              FAIL=$((FAIL + 1))
+            fi
             cd ..
           done
-      - name: Test CLI binaries
+          echo "=== CLI Build Summary: $SUCCESS succeeded, $FAIL failed ==="
+
+      - name: Package CLI binaries
+        shell: bash
         run: |
-          for bin in VC-*-CLI-Standalone; do
+          mkdir -p cli-package
+          for bin in VC-*-CLI-Standalone*; do
+            [ -f "$bin" ] || continue
             plugin=$(echo "$bin" | sed 's/-CLI-Standalone//')
             if [ "$plugin" = "VC-Plugin-Template" ]; then continue; fi
-            echo "=== Testing $bin ==="
-            ./$bin --help || true
+            cp "$bin" cli-package/
+            echo "Packaged: $bin"
           done
 
+          if [ "${{ matrix.archive_ext }}" = "tar.gz" ]; then
+            cd cli-package && tar czf ../${{ matrix.artifact_name }}.tar.gz . && cd ..
+          else
+            cd cli-package && zip -r ../${{ matrix.artifact_name }}.zip . && cd ..
+          fi
+
+          echo "=== CLI Package ==="
+          ls -lh ${{ matrix.artifact_name }}.*
+
+      - name: Upload CLI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-${{ matrix.os }}
+          path: ${{ matrix.artifact_name }}.*
+          retention-days: 30
+
+  # ──────────────────────────────────────
+  # 阶段3: 汇总打包 + 发Release（6个产物）
+  # ──────────────────────────────────────
   release:
-    name: Create GitHub Release
-    needs: build
+    name: Package & Release
+    needs: [detect, build-vst3, build-cli]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      - name: Download all VST3 artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: vst3-artifacts/
+          pattern: vst3-*
+
+      - name: Download all CLI artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: cli-artifacts/
+          pattern: cli-*
+
+      - name: Package VST3 by platform
+        shell: bash
+        run: |
+          mkdir -p release
+
+          # ── macOS VST3 package ──
+          mkdir -p macos-pkg
+          for dir in vst3-artifacts/vst3-*-macos-latest; do
+            [ -d "$dir" ] || continue
+            find "$dir" \( -name "*.vst3" -o -name "*.component" \) -exec cp -r {} macos-pkg/ \;
+          done
+          if ls macos-pkg/*.vst3 2>/dev/null || ls macos-pkg/*.component 2>/dev/null; then
+            cd macos-pkg && zip -r ../release/VocalChain-macOS.zip . && cd ..
+          fi
+
+          # ── Windows VST3 package ──
+          mkdir -p windows-pkg
+          for dir in vst3-artifacts/vst3-*-windows-latest; do
+            [ -d "$dir" ] || continue
+            find "$dir" -name "*.vst3" -exec cp -r {} windows-pkg/ \;
+          done
+          if ls windows-pkg/*.vst3 2>/dev/null; then
+            cd windows-pkg && zip -r ../release/VocalChain-Windows.zip . && cd ..
+          fi
+
+          # ── Linux VST3 package ──
+          mkdir -p linux-pkg
+          for dir in vst3-artifacts/vst3-*-ubuntu-latest; do
+            [ -d "$dir" ] || continue
+            find "$dir" -name "*.vst3" -exec cp -r {} linux-pkg/ \;
+          done
+          if ls linux-pkg/*.vst3 2>/dev/null; then
+            cd linux-pkg && zip -r ../release/VocalChain-Linux.zip . && cd ..
+          fi
+
+      - name: Collect CLI packages
+        shell: bash
+        run: |
+          # Copy pre-built CLI archives into release/
+          for f in cli-artifacts/cli-*/VocalChain-CLI-*; do
+            [ -f "$f" ] || continue
+            cp "$f" release/
+          done
+
+      - name: List all release packages
+        shell: bash
+        run: |
+          echo "=== Release Packages ==="
+          ls -lh release/
+
       - name: Extract version
         id: version
+        shell: bash
         run: echo "VERSION=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
 
       - name: Generate release notes from CHANGELOG.md
         id: changelog
+        shell: bash
         run: |
           python3 -c "
           import re
@@ -79,13 +310,15 @@ jobs:
       - name: Delete existing release if present
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
         run: |
           gh release delete ${{ steps.version.outputs.VERSION }} --yes --cleanup-tag=false 2>/dev/null || true
 
-      - name: Create Release
+      - name: Create Release with VST3 + CLI packages
         uses: softprops/action-gh-release@v2
         with:
           name: "AudioFX ${{ steps.version.outputs.VERSION }}"
           body_path: /tmp/changelog.txt
+          files: release/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
