@@ -1,0 +1,5 @@
+build/
+*.o
+*-CLI-Standalone
+*-CLI
+.DS_Store
