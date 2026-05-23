@@ -1,6 +1,6 @@
 # VC-PhaseScope
 
-> 相位抵消检测插件 - 实时相位分析 + 离线CLI工具
+> 相位抵消检测插件 - 实时相位分析 + 离线CLI工具 + VST3插件
 
 ## 功能特性
 
@@ -20,28 +20,48 @@
 - 支持WAV文件分析
 - 输出详细相位报告
 
+## 项目结构
+
+```
+AudioFX/
+├── include/
+│   └── VC-PhaseScope.h      # 核心DSP算法
+├── src/
+│   ├── VC-PhaseScope/       # VST3插件
+│   │   ├── Plugin.cpp       # 插件主程序+UI
+│   │   ├── ProjectInfo.h    # 项目信息
+│   │   └── VC-PhaseScope.jucer  # JUCE项目配置
+│   └── VC-PhaseScope-CLI/  # CLI工具
+│       └── main.cpp
+├── tests/                    # 测试
+├── docs/                     # 文档
+├── CMakeLists.txt           # 构建配置
+└── README.md
+```
+
 ## 编译
 
-### 依赖
-- C++17 编译器
-- CMake 3.15+
-- JUCE 7.x (可选，用于VST3插件)
+### 方式一：使用Projucer（推荐）
+1. 下载 JUCE: `git clone https://github.com/juce-framework/JUCE.git`
+2. 打开 Projucer（JUCE自带）
+3. 打开 `src/VC-PhaseScope/VC-PhaseScope.jucer`
+4. 选择 Export -> VST3
 
-### 编译CLI工具
+### 方式二：命令行（需要JUCE）
+```bash
+# 设置JUCE路径
+export JUCE_DIR=/path/to/JUCE
+
+# 编译
+mkdir build && cd build
+cmake -DJUCE_DIR=$JUCE_DIR ..
+cmake --build . --config Release
+```
+
+### CLI工具（不需要JUCE）
 ```bash
 mkdir build && cd build
 cmake ..
-make
-```
-
-### 编译VST3插件（需要JUCE）
-```bash
-# 先安装JUCE
-git clone https://github.com/juce-framework/JUCE.git
-export JUCE_DIR=/path/to/JUCE
-
-# 重新cmake
-cmake -DJUCE_DIR=$JUCE_DIR ..
 make
 ```
 
@@ -72,21 +92,6 @@ make
 
 底鼓/贝斯状态: OK
 ✓ 正常 - 低频相位无明显问题
-```
-
-## 项目结构
-
-```
-AudioFX/
-├── include/
-│   └── VC-PhaseScope.h      # 核心DSP算法
-├── src/
-│   └── VC-PhaseScope-CLI/   # CLI工具
-│       └── main.cpp
-├── tests/                    # 测试
-├── docs/                     # 文档
-├── CMakeLists.txt           # 构建配置
-└── README.md
 ```
 
 ## 算法说明

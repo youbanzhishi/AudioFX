@@ -28,8 +28,26 @@ target_include_directories(vc-phasescope-cli PRIVATE
 if(JUCE_FOUND)
     message(STATUS "JUCE found - building VST3 plugin")
     
-    # 这里添加JUCE插件配置
-    # 实际实现需要完整的JUCE项目结构
+    # 添加VST3插件源文件
+    set(VST3_SOURCES
+        src/VC-PhaseScope/Plugin.cpp
+        src/VC-PhaseScope/ProjectInfo.h
+    )
+    
+    # JUCE插件相关设置
+    add_library(VC-PhaseScope MODULE ${VST3_SOURCES})
+    target_link_libraries(VC-PhaseScope PRIVATE
+        juce::juce_core
+        juce::juce_audio_processors
+        juce::juce_gui_basics
+        juce::juce_audio_utils
+    )
+    
+    # 设置插件元数据
+    set_target_properties(VC-PhaseScope PROPERTIES
+        PREFIX ""
+        SUFFIX ".so"
+    )
 else()
     message(STATUS "JUCE not found - VST3 plugin disabled")
     message(STATUS "Install JUCE to enable VST3 plugin: https://juce.com/")
