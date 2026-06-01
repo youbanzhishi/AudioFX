@@ -3,6 +3,11 @@
 
 cmake_minimum_required(VERSION 3.22)
 
+# macOS deployment target - support macOS 10.15+ (Catalina)
+set(CMAKE_OSX_DEPLOYMENT_TARGET "10.15")
+# Universal binary: arm64 (Apple Silicon) + x86_64 (Intel)
+set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64")
+
 #==============================================================================
 # Plugin Configuration
 #==============================================================================
