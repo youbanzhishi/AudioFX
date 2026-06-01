@@ -1,5 +1,10 @@
 # VC-EQ DSP/CLI/VST3 Architecture
 cmake_minimum_required (VERSION 3.22)
+
+# macOS deployment target - support macOS 10.15+ (Catalina)
+set(CMAKE_OSX_DEPLOYMENT_TARGET "10.15")
+# Universal binary: arm64 (Apple Silicon) + x86_64 (Intel)
+set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64")
 set (JUCE_PATH "/opt/JUCE" CACHE PATH "Path to JUCE")
 project (VC-EQ VERSION 1.0.0 LANGUAGES C CXX)
 add_subdirectory (${JUCE_PATH} JUCE-build)
