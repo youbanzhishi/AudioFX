@@ -26,14 +26,7 @@ project(${PLUGIN_NAME} VERSION ${PLUGIN_VERSION} LANGUAGES C CXX)
 add_subdirectory(${JUCE_PATH} JUCE-build)
 
 #==============================================================================
-# DSP Sources
-#==============================================================================
-set(DSP_SOURCES
-    Source/DSP/VCSpaceMakerDSP.h
-)
-
-#==============================================================================
-# Target 1: JUCE CLI
+# Target 1: JUCE CLI (uses JUCE audio formats for file I/O)
 #==============================================================================
 add_executable(${PLUGIN_NAME}-CLI Source/CLI/main.cpp)
 
@@ -62,29 +55,7 @@ set_target_properties(${PLUGIN_NAME}-CLI PROPERTIES
 )
 
 #==============================================================================
-# Target 2: Standalone CLI
-#==============================================================================
-add_executable(${PLUGIN_NAME}-CLI-Standalone Source/DSP/VCSpaceMakerDSP.h)
-
-target_include_directories(${PLUGIN_NAME}-CLI-Standalone PRIVATE
-    ${CMAKE_SOURCE_DIR}/../Libs/dr_wav
-)
-
-target_compile_definitions(${PLUGIN_NAME}-CLI-Standalone PRIVATE
-    VC_STANDALONE
-)
-
-# Standalone mode includes main() in the DSP header
-target_link_libraries(${PLUGIN_NAME}-CLI-Standalone PRIVATE)
-
-set_target_properties(${PLUGIN_NAME}-CLI-Standalone PROPERTIES
-    CXX_STANDARD 17
-    CXX_STANDARD_REQUIRED ON
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/CLI_Standalone
-)
-
-#==============================================================================
-# Target 3: VST3 Plugin
+# Target 2: VST3 Plugin
 #==============================================================================
 juce_add_plugin(${PLUGIN_NAME}
     FORMATS VST3
