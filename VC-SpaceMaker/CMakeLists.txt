@@ -33,6 +33,7 @@ add_executable(${PLUGIN_NAME}-CLI Source/CLI/main.cpp)
 target_include_directories(${PLUGIN_NAME}-CLI PRIVATE
     ${JUCE_PATH}/modules
     Source/DSP
+    Source
 )
 
 target_link_libraries(${PLUGIN_NAME}-CLI PRIVATE
@@ -69,9 +70,15 @@ juce_add_plugin(${PLUGIN_NAME}
 )
 
 target_sources(${PLUGIN_NAME} PRIVATE
+    Source/PluginProcessor.h
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
     Source/DSP/VCSpaceMakerDSP.h
+)
+
+target_include_directories(${PLUGIN_NAME} PRIVATE
+    Source
+    Source/DSP
 )
 
 target_link_libraries(${PLUGIN_NAME} PRIVATE
