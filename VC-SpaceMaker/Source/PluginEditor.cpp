@@ -3,11 +3,10 @@
 // 实时频谱显示 + 控制面板
 // ============================================================================
 
+#include "PluginProcessor.h"
 #include <juce_audio_utils/juce_audio_utils.h>
 
-// Forward declaration
-class VCSpaceMakerProcessor;
-
+//==============================================================================
 class VCSpaceMakerEditor : public juce::AudioProcessorEditor,
                            public juce::Timer
 {
@@ -22,17 +21,21 @@ public:
         amountKnob.setSliderStyle (juce::Slider::RotaryVerticalDrag);
         amountKnob.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 60, 20);
         amountAttachment.reset (new juce::AudioProcessorValueTreeState::SliderAttachment (
-            createVTS(), "amount", amountKnob));
+            processor.getValueTreeState(), "amount", amountKnob));
 
         // Attack 旋钮
         addAndMakeVisible (attackKnob);
         attackKnob.setSliderStyle (juce::Slider::RotaryVerticalDrag);
         attackKnob.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 60, 20);
+        attackAttachment.reset (new juce::AudioProcessorValueTreeState::SliderAttachment (
+            processor.getValueTreeState(), "attack", attackKnob));
 
         // Release 旋钮
         addAndMakeVisible (releaseKnob);
         releaseKnob.setSliderStyle (juce::Slider::RotaryVerticalDrag);
         releaseKnob.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 60, 20);
+        releaseAttachment.reset (new juce::AudioProcessorValueTreeState::SliderAttachment (
+            processor.getValueTreeState(), "release", releaseKnob));
 
         // Labels
         amountLabel.setText ("Amount", juce::dontSendNotification);
@@ -118,9 +121,6 @@ public:
         releaseKnob.setBounds (knobArea.removeFromLeft (knobWidth));
 
         // 标签
-        auto labelArea = getLocalBounds().reduced (20);
-        labelArea.removeFromTop (350);
-
         amountLabel.setBounds (amountKnob.getX(), amountKnob.getBottom() + 2, knobWidth, 20);
         attackLabel.setBounds (attackKnob.getX(), attackKnob.getBottom() + 2, knobWidth, 20);
         releaseLabel.setBounds (releaseKnob.getX(), releaseKnob.getBottom() + 2, knobWidth, 20);
@@ -132,26 +132,15 @@ public:
     }
 
 private:
-    // Helper: create a temporary VTS from processor parameters
-    // (In production, the processor should own the VTS)
-    juce::AudioProcessorValueTreeState createVTS()
-    {
-        juce::AudioProcessorValueTreeState::ParameterLayout layout;
-        return juce::AudioProcessorValueTreeState (processor, nullptr, "PARAMS", std::move (layout));
-    }
-
     VCSpaceMakerProcessor& processor;
 
     juce::Slider amountKnob, attackKnob, releaseKnob;
     juce::Label amountLabel, attackLabel, releaseLabel;
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> amountAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> attackAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> releaseAttachment;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (VCSpaceMakerEditor)
 };
 
-// Forward declare the processor editor creation
-juce::AudioProcessorEditor* VCSpaceMakerProcessor::createEditor()
-{
-    return new VCSpaceMakerEditor (*this);
-}
