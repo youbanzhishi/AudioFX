@@ -48,9 +48,12 @@ public:
     juce::AudioProcessorValueTreeState& getValueTreeState() { return vts; }
 
 private:
+    // 创建参数布局
+    static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
+
     VCSpaceMakerDSP dsp;
 
-    // AudioProcessorValueTreeState - 替代单独的 addParameter
+    // AudioProcessorValueTreeState
     juce::AudioProcessorValueTreeState vts;
 
     juce::AudioParameterFloat* amountParam;
