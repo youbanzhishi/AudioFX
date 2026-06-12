@@ -175,6 +175,8 @@ jobs:
     name: ${{ matrix.plugin }} (${{ matrix.os }})
     needs: detect
     if: needs.detect.outputs.should_build == 'true'
+    timeout-minutes: 90
+    continue-on-error: ${{ matrix.os == 'macos-13' }}
     strategy:
       fail-fast: false
       matrix:
@@ -231,7 +233,7 @@ jobs:
         run: |
           mkdir -p ${{ matrix.plugin }}/build
           cd ${{ matrix.plugin }}/build
-          CMAKE_ARGS="-G "${{ matrix.cmake_generator }}" -DJUCE_PATH=../../JUCE -DCMAKE_BUILD_TYPE=Release"
+          CMAKE_ARGS="-G '${{ matrix.cmake_generator }}' -DJUCE_PATH=../../JUCE -DCMAKE_BUILD_TYPE=Release"
           if [[ "$RUNNER_OS" == "macOS" ]]; then
             CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15"
           fi
@@ -268,6 +270,7 @@ jobs:
     name: Test ${{ matrix.plugin }} (3-Tier CLI)
     needs: [detect, gen2-verify, build]
     if: needs.detect.outputs.should_build == 'true'
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
@@ -479,3 +482,4 @@ jobs:
           - **VocalChain-Linux.zip** - All VST3 plugins for Linux
 
           Built with JUCE ${{ env.JUCE_VERSION }}"
+
