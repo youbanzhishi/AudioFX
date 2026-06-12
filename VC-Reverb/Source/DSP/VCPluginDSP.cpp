@@ -209,9 +209,9 @@ void VCPluginDSP::processInternal(float* left, float* right, int numSamples)
     float mixFactor = VC_JCLAMP(mParams.mix, 0.0f, 100.0f) / 100.0f;
 
     // FDN output scaling: 1/sqrt(N) to normalize energy
-    constexpr float fdnScale = 1.0f / std::sqrt(static_cast<float>(FDN_NUM_DELAYS));
+    const float fdnScale = 1.0f / std::sqrt(static_cast<float>(FDN_NUM_DELAYS));
     // Householder matrix scaling: 2/N
-    constexpr float hhScale = 2.0f / static_cast<float>(FDN_NUM_DELAYS);
+    const float hhScale = 2.0f / static_cast<float>(FDN_NUM_DELAYS);
 
     for (int i = 0; i < numSamples; ++i) {
         float inL = left[i];
