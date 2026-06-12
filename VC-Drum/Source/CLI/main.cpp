@@ -26,7 +26,6 @@ void printHelp(const char* progName) {
     std::cout << "Usage: " << progName << " <input.wav> <output.wav> [options]\n\n";
     std::cout << "Options:\n";
     std::cout << "  --help, -h           Show this help\n";
-    std::cout << "  --mix <0-100>        Dry/Wet mix percentage (default: 100)\n";
     std::cout << "  --bypass <0|1>       Bypass processing (default: 0)\n\n";
     std::cout << "Examples:\n";
 }
@@ -133,11 +132,6 @@ int main(int argc, char** argv) {
 
     // Override with command line parameters
 
-    if (args.count("--mix")) {
-        params.mix = std::stof(args["--mix"]);
-        dsp.setParams(params);
-        std::cout << "Mix: " << params.mix << "%\n";
-    }
 
     if (args.count("--bypass")) {
         params.enabled = (args["--bypass"] == "1");
