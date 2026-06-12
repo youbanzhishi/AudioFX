@@ -111,12 +111,11 @@ void __PLUGIN_NAME__Processor::parameterChanged(const String& parameterID,
     } else if (parameterID == ParameterIDs::gain) {
         mGainDB = newValue;
         VCPluginDSP::Params p = mDSP.getParams();
-        p.gainDB = mGainDB;
+        // p.gainDB removed - SurgicalDeEsser uses reduction
         mDSP.setParams(p);
     } else if (parameterID == ParameterIDs::mix) {
         mMix = newValue;
         VCPluginDSP::Params p = mDSP.getParams();
-        p.mix = mMix;
         mDSP.setParams(p);
     }
 }

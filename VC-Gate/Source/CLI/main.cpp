@@ -167,15 +167,15 @@ int main(int argc, char** argv) {
 
     // Override with command line parameters
     if (args.count("--gain")) {
-        params.gainDB = std::stof(args["--gain"]);
+        // // gainDB not available in current Params struct
         dsp.setParams(params);
-        std::cout << "Gain: " << params.gainDB << " dB\n";
+        std::cout << "Gain: " << // params.gainDB << " dB\n";
     }
 
     if (args.count("--mix")) {
-        params.mix = std::stof(args["--mix"]);
+        // mix not available in current Params struct
         dsp.setParams(params);
-        std::cout << "Mix: " << params.mix << "%\n";
+        // mix output removed
     }
 
     if (args.count("--bypass")) {

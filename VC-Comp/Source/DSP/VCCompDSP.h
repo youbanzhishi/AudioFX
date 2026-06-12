@@ -6,14 +6,19 @@
 
 #pragma once
 
+// Shared constants (available in both JUCE and Standalone modes)
+constexpr float VC_PI = 3.14159265358979323846f;
+
 #ifdef VC_STANDALONE
 // Standalone mode: use standard library math, no JUCE dependency
 #include <vector>
 #include <cmath>
 #include <algorithm>
 
-// Standalone constants
-constexpr float VC_PI = 3.14159265358979323846f;
+namespace VCStandalone {
+    inline float decibelsToGain(float dB) { return std::pow(10.0f, dB / 20.0f); }
+    inline float gainToDecibels(float gain) { return 20.0f * std::log10(std::max(gain, 1e-10f)); }
+}
 
 #define VC_DECLARE_NON_COPYABLE(x) // No-op in standalone
 #define VC_JMIN(a, b) std::min(a, b)
@@ -21,6 +26,12 @@ constexpr float VC_PI = 3.14159265358979323846f;
 #else
 // JUCE mode
 #include <juce_dsp/juce_dsp.h>
+
+namespace VCStandalone {
+    inline float decibelsToGain(float dB) { return juce::Decibels::decibelsToGain(dB); }
+    inline float gainToDecibels(float gain) { return juce::Decibels::gainToDecibels(gain); }
+}
+
 #define VC_DECLARE_NON_COPYABLE(x) JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(x)
 #define VC_JMIN(a, b) juce::jmin(a, b)
 #define VC_JMAX(a, b) juce::jmax(a, b)

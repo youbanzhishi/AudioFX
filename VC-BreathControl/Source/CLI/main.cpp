@@ -24,7 +24,7 @@ int main(int argc, char* argv[])
     juce::AudioFormatManager formatManager;
     formatManager.registerBasicFormats();
 
-    std::unique_ptr<juce::AudioFormatReader> reader(formatManager.createReaderFor(inFile));
+    std::unique_ptr<juce::AudioFormatReader> reader(formatManager.createReaderFor(juce::File(inFile)));
     if (!reader) {
         std::cerr << "Error: Cannot read file: " << inFile << "\n";
         return 1;

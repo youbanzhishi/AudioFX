@@ -31,6 +31,11 @@ namespace VCStandalone {
 // JUCE mode
 #include <juce_dsp/juce_dsp.h>
 
+namespace VCStandalone {
+    inline float decibelsToGain(float dB) { return juce::Decibels::decibelsToGain(dB); }
+    inline float gainToDecibels(float gain) { return juce::Decibels::gainToDecibels(gain); }
+}
+
 #define VC_DECLARE_NON_COPYABLE(x) JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(x)
 #define VC_JMIN(a, b) juce::jmin(a, b)
 #define VC_JMAX(a, b) juce::jmax(a, b)

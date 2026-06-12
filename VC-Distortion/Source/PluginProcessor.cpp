@@ -111,7 +111,7 @@ void __PLUGIN_NAME__Processor::parameterChanged(const String& parameterID,
     } else if (parameterID == ParameterIDs::gain) {
         mGainDB = newValue;
         VCPluginDSP::Params p = mDSP.getParams();
-        p.gainDB = mGainDB;
+        p.makeup = mGainDB;
         mDSP.setParams(p);
     } else if (parameterID == ParameterIDs::mix) {
         mMix = newValue;

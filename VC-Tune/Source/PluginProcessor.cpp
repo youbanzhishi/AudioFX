@@ -110,13 +110,12 @@ void __PLUGIN_NAME__Processor::parameterChanged(const String& parameterID,
         mDSP.setEnabled(!mBypass);
     } else if (parameterID == ParameterIDs::gain) {
         mGainDB = newValue;
-        VCPluginDSP::Params p = mDSP.getParams();
-        p.gainDB = mGainDB;
+        VCTuneDSP::Params p = mDSP.getParams();
+        // gainDB not in VCTuneDSP::Params
         mDSP.setParams(p);
     } else if (parameterID == ParameterIDs::mix) {
         mMix = newValue;
-        VCPluginDSP::Params p = mDSP.getParams();
-        p.mix = mMix;
+        VCTuneDSP::Params p = mDSP.getParams();
         mDSP.setParams(p);
     }
 }

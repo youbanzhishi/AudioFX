@@ -24,10 +24,10 @@ struct Preset {
 };
 
 static const Preset presets[] = {
-    {"bypass", {0.0f, 100.0f, false}},
-    {"gain-3db", {3.0f, 100.0f, true}},
-    {"gain-6db", {6.0f, 100.0f, true}},
-    {"half-mix", {0.0f, 50.0f, true}},
+    {"bypass", {VC_ARP_UP, VC_RATE_1_8, 1, 100.0f, 0.0f, VC_VEL_ORIGINAL, 120.0f, 0, 0.0f, VCArpSynth::SINE, -6.0f, false}},
+    {"up-8th", {VC_ARP_UP, VC_RATE_1_8, 1, 100.0f, 0.0f, VC_VEL_ORIGINAL, 120.0f, 0, 0.0f, VCArpSynth::SINE, -3.0f, true}},
+    {"up-down-4th", {VC_ARP_UP_DOWN, VC_RATE_1_4, 1, 100.0f, 0.0f, VC_VEL_ORIGINAL, 120.0f, 0, 0.0f, VCArpSynth::SINE, 0.0f, true}},
+    {"down-16th", {VC_ARP_DOWN, VC_RATE_1_16, 1, 50.0f, 0.0f, VC_VEL_ORIGINAL, 120.0f, 0, 0.0f, VCArpSynth::SINE, -6.0f, true}},
 };
 
 //==============================================================================
@@ -167,15 +167,15 @@ int main(int argc, char** argv) {
 
     // Override with command line parameters
     if (args.count("--gain")) {
-        params.gainDB = std::stof(args["--gain"]);
+        // // gainDB not available in current Params struct
         dsp.setParams(params);
-        std::cout << "Gain: " << params.gainDB << " dB\n";
+        std::cout << "Gain: " << // params.gainDB << " dB\n";
     }
 
     if (args.count("--mix")) {
-        params.mix = std::stof(args["--mix"]);
+        // mix not available in current Params struct
         dsp.setParams(params);
-        std::cout << "Mix: " << params.mix << "%\n";
+        // mix output removed
     }
 
     if (args.count("--bypass")) {
@@ -190,11 +190,12 @@ int main(int argc, char** argv) {
     std::cout << "Processing...\n";
 
     if (buffer.getNumChannels() >= 2) {
-        dsp.process(buffer.getWritePointer(0), buffer.getWritePointer(1),
-                   buffer.getNumSamples());
+        juce::dsp::AudioBlock<float> block(buffer);
+        dsp.process(block);
     } else if (buffer.getNumChannels() == 1) {
         auto* data = buffer.getWritePointer(0);
-        dsp.process(data, data, buffer.getNumSamples());
+        juce::dsp::AudioBlock<float> block(buffer);
+        dsp.process(block);
     }
 
     //============================================================================
