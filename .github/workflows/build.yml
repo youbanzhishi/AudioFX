@@ -92,9 +92,6 @@ jobs:
 
   # ──────────────────────────────────────
   # 阶段1.5: Gen2插件快速编译验证（g++ standalone，无需JUCE）
-  # 在完整JUCE构建前快速验证Gen2插件能否编译通过
-  # Gen2插件: VC-Stereo, VC-PitchShift, VC-Reverb(FDN升级), VC-Comp(多段压缩升级),
-  #           VC-Tune, VC-MultiBand, VC-Harmonizer, VC-NoiseProfile
   # ──────────────────────────────────────
   gen2-verify:
     name: Gen2 Compile Verify
@@ -186,7 +183,7 @@ jobs:
             cmake_generator: "Ninja"
             macos_arch: universal
           - os: windows-latest
-            cmake_generator: "Visual Studio 17 2022"
+            cmake_generator: "Ninja"
           - os: ubuntu-latest
             cmake_generator: "Ninja"
 
@@ -200,6 +197,10 @@ jobs:
         if: runner.os == 'MacOS'
         shell: bash
         run: brew install ninja
+
+      - name: Setup MSVC (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
 
       - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
@@ -229,12 +230,9 @@ jobs:
         run: |
           mkdir -p ${{ matrix.plugin }}/build
           cd ${{ matrix.plugin }}/build
-          CMAKE_ARGS="-G '${{ matrix.cmake_generator }}' -DJUCE_PATH=../../JUCE -DCMAKE_BUILD_TYPE=Release"
-          if [[ "$RUNNER_OS" == "macOS" ]]; then
-            CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15"
-            CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_OSX_ARCHITECTURES='x86_64;arm64'"
-          fi
-          eval cmake .. $CMAKE_ARGS
+          cmake -G Ninja -DJUCE_PATH=../../JUCE -DCMAKE_BUILD_TYPE=Release \
+            ${{ runner.os == 'macOS' && '-DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"' || '' }} \
+            ..
 
       - name: Build ${{ matrix.plugin }}
         shell: bash
@@ -259,9 +257,6 @@ jobs:
 
   # ──────────────────────────────────────
   # 阶段2.5: 三层CLI测试（仅在Linux上运行）
-  # Tier 1: 可运行性 - CLI不崩溃、输出有效WAV
-  # Tier 2: 功能性 - DSP正确性验证（脉冲/正弦响应分析）
-  # Tier 3: 效果性 - 信号链合理性（RMS/峰值范围检查）
   # ──────────────────────────────────────
   test:
     name: Test ${{ matrix.plugin }} (3-Tier CLI)
@@ -290,18 +285,10 @@ jobs:
             libdbus-1-dev pkg-config sox
           pip install numpy scipy
 
-      # ── 快速反馈：g++秒编Standalone CLI，跑功能性测试 ──
       - name: Build Standalone CLI (g++, no JUCE)
         shell: bash
         run: |
           cd ${{ matrix.plugin }}
-          # Detect DSP filename (some plugins have custom names)
-          # Gen1 plugins (14): VC-EQ, VC-Smooth, VC-Gain, VC-Saturator,
-          #   VC-DeEsser, VC-SurgicalDeEsser, VC-Limiter, VC-Delay,
-          #   VC-DynamicEQ, VC-Distortion, VC-Noise, VC-Tune, VC-Gate, VC-Chorus
-          # Gen2 plugins (8): VC-Stereo, VC-PitchShift, VC-Reverb(FDN升级), VC-Comp(多段压缩升级), VC-Tune, VC-MultiBand, VC-Harmonizer, VC-NoiseProfile
-          # Custom DSP filenames: VCEQDSP, VCCompDSP, VCSmoothDSP,
-          #   VCDistortionDSP, VCNoiseDSP, VCSurgicalDeEsserDSP
           if [ -f "Source/DSP/VCEQDSP.cpp" ]; then DSP="Source/DSP/VCEQDSP.cpp"
           elif [ -f "Source/DSP/VCCompDSP.cpp" ]; then DSP="Source/DSP/VCCompDSP.cpp"
           elif [ -f "Source/DSP/VCSmoothDSP.cpp" ]; then DSP="Source/DSP/VCSmoothDSP.cpp"
@@ -320,7 +307,6 @@ jobs:
         run: |
           python3 tests/cli_functional_test.py ${{ matrix.plugin }} ./${{ matrix.plugin }}/standalone-CLI
 
-      # ── 完整JUCE构建 + Tier 1可运行性测试 ──
       - name: Cache JUCE
         id: cache-juce
         uses: actions/cache@v4
@@ -371,9 +357,7 @@ jobs:
             return 0
           }
           
-          # Test Standalone CLI from JUCE build
           STANDALONE_BIN=$(find ${{ matrix.plugin }}/build -name "${{ matrix.plugin }}-CLI-Standalone" -type f 2>/dev/null | head -1)
-          # Test JUCE CLI
           JUCE_BIN=$(find ${{ matrix.plugin }}/build -name "${{ matrix.plugin }}-CLI" -type f 2>/dev/null | head -1)
           
           if [ -z "$STANDALONE_BIN" ] && [ -z "$JUCE_BIN" ]; then
@@ -424,7 +408,6 @@ jobs:
         shell: bash
         run: |
           mkdir -p release
-          # macOS Universal (Intel+ARM, built on macos-latest runner with cross-compilation)
           mkdir -p macos-universal-pkg
           for dir in artifacts/*-macos-latest; do
             [ -d "$dir" ] || continue
@@ -464,10 +447,8 @@ jobs:
             --notes "VocalChain plugin suite $TAG
 
           ## Downloads
-          - **VocalChain-macOS-Intel.zip** - All VST3 plugins for macOS Intel (10.15+)
-          - **VocalChain-macOS-ARM64.zip** - All VST3 plugins for macOS Apple Silicon
+          - **VocalChain-macOS-Universal.zip** - All VST3 plugins for macOS (Universal, 10.15+)
           - **VocalChain-Windows.zip** - All VST3 plugins for Windows
           - **VocalChain-Linux.zip** - All VST3 plugins for Linux
 
           Built with JUCE ${{ env.JUCE_VERSION }}"
-
