@@ -10,6 +10,7 @@ permissions:
 
 env:
   JUCE_VERSION: '8.0.12'
+  MACOSX_DEPLOYMENT_TARGET: '10.15'
 
 jobs:
   # ──────────────────────────────────────
@@ -41,10 +42,14 @@ jobs:
       fail-fast: false
       matrix:
         plugin: ${{ fromJson(needs.detect.outputs.matrix).plugin }}
-        os: [macos-latest, windows-latest, ubuntu-latest]
+        os: [macos-13, macos-latest, windows-latest, ubuntu-latest]
         include:
+          - os: macos-13
+            cmake_generator: "Ninja"
+            macos_arch: intel
           - os: macos-latest
             cmake_generator: "Ninja"
+            macos_arch: arm64
           - os: windows-latest
             cmake_generator: "Visual Studio 17 2022"
           - os: ubuntu-latest
@@ -89,7 +94,11 @@ jobs:
         run: |
           mkdir -p ${{ matrix.plugin }}/build
           cd ${{ matrix.plugin }}/build
-          cmake .. -G "${{ matrix.cmake_generator }}" -DJUCE_PATH=../../JUCE -DCMAKE_BUILD_TYPE=Release
+          CMAKE_ARGS="-G "${{ matrix.cmake_generator }}" -DJUCE_PATH=../../JUCE -DCMAKE_BUILD_TYPE=Release"
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15"
+          fi
+          eval cmake .. $CMAKE_ARGS
 
       - name: Build ${{ matrix.plugin }}
         shell: bash
@@ -121,10 +130,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest, ubuntu-latest]
+        os: [macos-13, macos-latest, windows-latest, ubuntu-latest]
         include:
+          - os: macos-13
+            artifact_name: VocalChain-CLI-macOS-Intel
+            archive_ext: tar.gz
           - os: macos-latest
-            artifact_name: VocalChain-CLI-macOS
+            artifact_name: VocalChain-CLI-macOS-ARM64
             archive_ext: tar.gz
           - os: windows-latest
             artifact_name: VocalChain-CLI-Windows
@@ -278,14 +290,23 @@ jobs:
         run: |
           mkdir -p release
 
-          # ── macOS VST3 package ──
-          mkdir -p macos-pkg
+          # ── macOS Intel VST3 package ──
+          mkdir -p macos-intel-pkg
+          for dir in vst3-artifacts/vst3-*-macos-13; do
+            [ -d "$dir" ] || continue
+            find "$dir" \( -name "*.vst3" -o -name "*.component" \) -exec cp -r {} macos-intel-pkg/ \;
+          done
+          if ls macos-intel-pkg/*.vst3 2>/dev/null || ls macos-intel-pkg/*.component 2>/dev/null; then
+            cd macos-intel-pkg && zip -r ../release/VocalChain-macOS-Intel.zip . && cd ..
+          fi
+          # ── macOS ARM64 VST3 package ──
+          mkdir -p macos-arm64-pkg
           for dir in vst3-artifacts/vst3-*-macos-latest; do
             [ -d "$dir" ] || continue
-            find "$dir" \( -name "*.vst3" -o -name "*.component" \) -exec cp -r {} macos-pkg/ \;
+            find "$dir" \( -name "*.vst3" -o -name "*.component" \) -exec cp -r {} macos-arm64-pkg/ \;
           done
-          if ls macos-pkg/*.vst3 2>/dev/null || ls macos-pkg/*.component 2>/dev/null; then
-            cd macos-pkg && zip -r ../release/VocalChain-macOS.zip . && cd ..
+          if ls macos-arm64-pkg/*.vst3 2>/dev/null || ls macos-arm64-pkg/*.component 2>/dev/null; then
+            cd macos-arm64-pkg && zip -r ../release/VocalChain-macOS-ARM64.zip . && cd ..
           fi
 
           # ── Windows VST3 package ──
