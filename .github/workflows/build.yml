@@ -336,10 +336,18 @@ jobs:
             local cli_bin=$1
             local label=$2
             echo "=== Testing $label ==="
-            $cli_bin test_input.wav test_output_${label}.wav || {
-              echo "$label execution failed"
-              return 1
-            }
+            # Synth plugins (VC-Drum) take only output.wav, no input
+            if [ "${{ matrix.plugin }}" = "VC-Drum" ]; then
+              $cli_bin test_output_${label}.wav --preset basic-beat --bars 1 || {
+                echo "$label execution failed"
+                return 1
+              }
+            else
+              $cli_bin test_input.wav test_output_${label}.wav || {
+                echo "$label execution failed"
+                return 1
+              }
+            fi
             if [ ! -f "test_output_${label}.wav" ]; then
               echo "$label: Output file not created"
               return 1
