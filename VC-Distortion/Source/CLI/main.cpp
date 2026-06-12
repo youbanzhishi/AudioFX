@@ -1,4 +1,4 @@
-// VC-Plugin CLI - JUCE-based Command Line Tool
+// VC-Distortion CLI - JUCE-based Command Line Tool
 // Requires JUCE library for WAV I/O
 
 #include <iostream>
@@ -15,32 +15,20 @@
 #include "../DSP/VCDistortionDSP.h"
 
 //==============================================================================
-// Plugin-specific presets and parameters
-// TODO: Replace with your plugin's presets
-//==============================================================================
-struct Preset {
-    const char* name;
-    VCPluginDSP::Params params;
-};
-
-static const Preset presets[] = {
-};
-
-//==============================================================================
 // Help text
 //==============================================================================
 void printHelp(const char* progName) {
-    std::cout << "VC-Plugin CLI - Audio Plugin Tool\n\n";
+    std::cout << "VC-Distortion CLI - Distortion Audio Plugin Tool\n\n";
     std::cout << "Usage: " << progName << " <input.wav> <output.wav> [options]\n\n";
     std::cout << "Options:\n";
     std::cout << "  --help, -h           Show this help\n";
-    std::cout << "  --preset <name>      Preset (bypass, gain-3db, gain-6db, half-mix)\n";
-    std::cout << "  --gain <dB>          Gain in dB (default: 0)\n";
-    std::cout << "  --mix <0-100>        Dry/Wet mix percentage (default: 100)\n";
+    std::cout << "  --drive <0-1>        Drive amount (default: 0.5)\n";
+    std::cout << "  --mix <0-1>          Dry/wet mix (default: 1.0)\n";
+    std::cout << "  --tone <0-1>         Tone filter (default: 0.5)\n";
+    std::cout << "  --makeup <-30-30>    Makeup gain dB (default: 0)\n";
     std::cout << "  --bypass <0|1>       Bypass processing (default: 0)\n\n";
     std::cout << "Examples:\n";
-    std::cout << "  " << progName << " in.wav out.wav --preset gain-3db\n";
-    std::cout << "  " << progName << " in.wav out.wav --gain 6.0 --mix 75\n";
+    std::cout << "  " << progName << " in.wav out.wav --drive 0.8 --tone 0.3\n";
 }
 
 //==============================================================================
@@ -65,19 +53,6 @@ std::map<std::string, std::string> parseArgs(int argc, char** argv) {
 }
 
 //==============================================================================
-// Load preset by name
-//==============================================================================
-bool loadPreset(const std::string& name, VCPluginDSP::Params& p) {
-    for (const auto& preset : presets) {
-        if (name == preset.name) {
-            p = preset.params;
-            return true;
-        }
-    }
-    return false;
-}
-
-//==============================================================================
 // Main entry point
 //==============================================================================
 int main(int argc, char** argv) {
@@ -92,7 +67,6 @@ int main(int argc, char** argv) {
         return 0;
     }
 
-    // Parse input/output files
     std::vector<std::string> files;
     for (int i = 1; i < argc; ++i) {
         if (argv[i][0] != '-') {
@@ -109,13 +83,10 @@ int main(int argc, char** argv) {
     std::string inFile = files[0];
     std::string outFile = files[1];
 
-    std::cout << "VC-Plugin CLI (JUCE Version)\n";
+    std::cout << "VC-Distortion CLI (JUCE Version)\n";
     std::cout << "Input: " << inFile << "\n";
     std::cout << "Output: " << outFile << "\n";
 
-    //============================================================================
-    // Read audio file using JUCE
-    //============================================================================
     juce::AudioFormatManager fm;
     fm.registerBasicFormats();
 
@@ -131,7 +102,6 @@ int main(int argc, char** argv) {
     std::cout << "Channels: " << reader->numChannels << "\n";
     std::cout << "Duration: " << reader->lengthInSamples / reader->sampleRate << " seconds\n";
 
-    // Read audio data
     juce::AudioBuffer<float> buffer(
         static_cast<int>(reader->numChannels),
         static_cast<int>(reader->lengthInSamples));
@@ -150,31 +120,32 @@ int main(int argc, char** argv) {
 
     VCPluginDSP::Params params;
 
-    // Load preset if specified
-    if (args.count("--preset")) {
-        std::string presetName = args["--preset"];
-        std::cout << "Preset: " << presetName << "\n";
-        if (!loadPreset(presetName, params)) {
-            std::cerr << "Error: Unknown preset\n";
-            return 1;
-        }
-        dsp.setParams(params);
+    if (args.count("--drive")) {
+        params.drive = std::stof(args["--drive"]);
+        std::cout << "Drive: " << params.drive << "\n";
     }
-
-    // Override with command line parameters
-    // --gain removed
 
     if (args.count("--mix")) {
         params.mix = std::stof(args["--mix"]);
-        dsp.setParams(params);
-        std::cout << "Mix: " << params.mix << "%\n";
+        std::cout << "Mix: " << params.mix << "\n";
+    }
+
+    if (args.count("--tone")) {
+        params.tone = std::stof(args["--tone"]);
+        std::cout << "Tone: " << params.tone << "\n";
+    }
+
+    if (args.count("--makeup")) {
+        params.makeup = std::stof(args["--makeup"]);
+        std::cout << "Makeup: " << params.makeup << " dB\n";
     }
 
     if (args.count("--bypass")) {
-        params.enabled = (args["--bypass"] == "1");
-        dsp.setEnabled(params.enabled);
-        std::cout << "Bypass: " << (params.enabled ? "off" : "on") << "\n";
+        params.enabled = (args["--bypass"] != "1");
+        std::cout << "Bypass: " << (!params.enabled ? "on" : "off") << "\n";
     }
+
+    dsp.setParams(params);
 
     //============================================================================
     // Process audio
@@ -191,9 +162,6 @@ int main(int argc, char** argv) {
 
     //============================================================================
     // Write output file using JUCE
-    // IMPORTANT: createWriterFor takes 6 parameters!
-    // - Parameter 5: metadata (MUST be StringPairArray, NOT StringArray!)
-    // - Parameter 6: quality (0 for PCM formats)
     //============================================================================
     juce::WavAudioFormat wavFmt;
     std::unique_ptr<juce::AudioFormatWriter> writer(
@@ -201,9 +169,9 @@ int main(int argc, char** argv) {
             new juce::FileOutputStream(juce::File(outFile)),
             reader->sampleRate,
             static_cast<unsigned int>(buffer.getNumChannels()),
-            32,  // bits per sample (32-bit float)
-            {},  // metadata - MUST be StringPairArray, not StringArray!
-            0    // quality - 0 for PCM formats
+            32,
+            {},
+            0
         )
     );
 
