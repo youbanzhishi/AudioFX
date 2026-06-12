@@ -227,8 +227,10 @@ void VCPluginDSP::setEnabled(bool enabled)
 //==============================================================================
 // Standalone IIR processing - Gen2 Multi-band Dynamic EQ
 //==============================================================================
-#ifdef VC_STANDALONE
 
+//==============================================================================
+// Band coefficient update (used by both JUCE and Standalone modes)
+//==============================================================================
 void VCPluginDSP::updateBandCoefficients(int bandIdx)
 {
     if (bandIdx < 0 || bandIdx >= VC_DYN_EQ_MAX_BANDS) return;
@@ -323,6 +325,10 @@ void VCPluginDSP::updateAllBandCoefficients()
     }
 }
 
+//==============================================================================
+// Standalone processing (only for CLI_Standalone mode)
+//==============================================================================
+#ifdef VC_STANDALONE
 void VCPluginDSP::processInternal(float* left, float* right, int numSamples)
 {
     float wet = mParams.mix / 100.0f;
@@ -376,4 +382,5 @@ void VCPluginDSP::processInternal(float* left, float* right, int numSamples)
         }
     }
 }
+#endif
 #endif
