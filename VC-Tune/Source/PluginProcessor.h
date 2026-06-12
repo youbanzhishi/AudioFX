@@ -9,7 +9,7 @@
 #include <juce_dsp/juce_dsp.h>
 #include <vector>
 
-#include "DSP/VCTuneDSP.h"
+#include "DSP/VCPluginDSP.h"
 
 //==============================================================================
 // Parameter IDs
