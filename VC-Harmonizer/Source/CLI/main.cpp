@@ -119,9 +119,6 @@ void printHelp(const char* progName) {
     std::cout << "  --midi-track <num>          MIDI track for VST3 mode (-1=off) [default: -1]\n\n";
     std::cout << "Other:\n";
     std::cout << "  --bypass <0|1>              Bypass processing [default: 0]\n";
-    for (const auto& p : presets) {
-        std::cout << "                              " << p.name << " - " << p.description << "\n";
-    }
     std::cout << "\nExamples:\n";
     std::cout << "  " << progName << " vocal.wav harmony.wav --voices 3 --intervals 3,7,12\n";
     std::cout << "  " << progName << " vocal.wav harmony.wav --autokey 1 --intervals 4,7\n";
@@ -167,7 +164,6 @@ std::map<std::string, std::string> parseArgs(int argc, char** argv) {
 }
 
 //==============================================================================
-// Load preset
 //==============================================================================
 //==============================================================================
 // Main entry point
