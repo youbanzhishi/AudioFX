@@ -17,20 +17,6 @@
 //==============================================================================
 // Presets
 //==============================================================================
-struct Preset {
-    const char* name;
-    VCPluginDSP::Params params;
-};
-
-static const Preset presets[] = {
-    {"bypass",        {100.0f, 0.0f, false, 150.0f, false}},
-    {"mono",          {  0.0f, 0.0f, false, 150.0f, true }},
-    {"wide",          {150.0f, 0.0f, false, 150.0f, true }},
-    {"extra-wide",    {200.0f, 0.0f, false, 150.0f, true }},
-    {"bass-mono",     {100.0f, 0.0f, true,  150.0f, true }},
-    {"center-pan",    {100.0f, 0.0f, false, 150.0f, true }},
-};
-
 //==============================================================================
 // Help / Arg parsing (same pattern as CLI_Standalone)
 //==============================================================================
@@ -39,7 +25,6 @@ void printHelp(const char* progName) {
     std::cout << "Usage: " << progName << " <input.wav> <output.wav> [options]\n\n";
     std::cout << "Options:\n";
     std::cout << "  --help, -h           Show this help\n";
-    std::cout << "  --preset <name>      Preset\n";
     std::cout << "  --width <%>          Stereo width (0 ~ 200), default: 100\n";
     std::cout << "  --pan <-100~100>     Stereo pan, default: 0\n";
     std::cout << "  --mono-bass <0|1>    Mono bass, default: 0\n";
@@ -63,16 +48,6 @@ std::map<std::string, std::string> parseArgs(int argc, char** argv) {
         }
     }
     return args;
-}
-
-bool loadPreset(const std::string& name, VCPluginDSP::Params& p) {
-    for (const auto& preset : presets) {
-        if (name == preset.name) {
-            p = preset.params;
-            return true;
-        }
-    }
-    return false;
 }
 
 float getFloatArg(const std::map<std::string, std::string>& args,
@@ -127,12 +102,6 @@ int main(int argc, char** argv) {
     dsp.prepare(reader->sampleRate, 4096);
     VCPluginDSP::Params params;
 
-    if (args.count("--preset")) {
-        std::string presetName = args["--preset"];
-        if (!loadPreset(presetName, params)) {
-            std::cerr << "Error: Unknown preset\n"; return 1;
-        }
-    }
 
     params.width    = getFloatArg(args, "--width",    params.width);
     params.pan      = getFloatArg(args, "--pan",      params.pan);

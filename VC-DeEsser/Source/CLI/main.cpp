@@ -15,20 +15,7 @@
 #include "../DSP/VCPluginDSP.h"
 
 //==============================================================================
-// Plugin-specific presets and parameters
 //==============================================================================
-struct Preset {
-    const char* name;
-    VCDeEsserDSP::Params params;
-};
-
-static const Preset presets[] = {
-    {"bypass", {-20.0f, 6000.0f, -10.0f, 100.0f, false}},
-    {"mild", {-18.0f, 6000.0f, -6.0f, 100.0f, true}},
-    {"moderate", {-20.0f, 7000.0f, -12.0f, 100.0f, true}},
-    {"heavy", {-24.0f, 8000.0f, -20.0f, 100.0f, true}},
-};
-
 //==============================================================================
 // Help text
 //==============================================================================
@@ -37,14 +24,12 @@ void printHelp(const char* progName) {
     std::cout << "Usage: " << progName << " <input.wav> <output.wav> [options]\n\n";
     std::cout << "Options:\n";
     std::cout << "  --help, -h           Show this help\n";
-    std::cout << "  --preset <name>      Preset (bypass, mild, moderate, heavy)\n";
     std::cout << "  --threshold <dB>     Trigger threshold dB (default: -20)\n";
     std::cout << "  --frequency <Hz>     Sibilance detection frequency Hz (default: 6000)\n";
     std::cout << "  --reduction <dB>     Maximum attenuation dB (default: -10)\n";
     std::cout << "  --mix <0-100>        Dry/Wet mix percentage (default: 100)\n";
     std::cout << "  --bypass <0|1>       Bypass processing (default: 0)\n\n";
     std::cout << "Examples:\n";
-    std::cout << "  " << progName << " in.wav out.wav --preset moderate\n";
     std::cout << "  " << progName << " in.wav out.wav --threshold -24 --frequency 7000\n";
 }
 
@@ -72,16 +57,6 @@ std::map<std::string, std::string> parseArgs(int argc, char** argv) {
 //==============================================================================
 // Load preset by name
 //==============================================================================
-bool loadPreset(const std::string& name, VCDeEsserDSP::Params& p) {
-    for (const auto& preset : presets) {
-        if (name == preset.name) {
-            p = preset.params;
-            return true;
-        }
-    }
-    return false;
-}
-
 //==============================================================================
 // Main entry point
 //==============================================================================
@@ -156,15 +131,6 @@ int main(int argc, char** argv) {
     VCDeEsserDSP::Params params;
 
     // Load preset if specified
-    if (args.count("--preset")) {
-        std::string presetName = args["--preset"];
-        std::cout << "Preset: " << presetName << "\n";
-        if (!loadPreset(presetName, params)) {
-            std::cerr << "Error: Unknown preset\n";
-            return 1;
-        }
-        dsp.setParams(params);
-    }
 
     // Override with command line parameters
     if (args.count("--threshold")) {

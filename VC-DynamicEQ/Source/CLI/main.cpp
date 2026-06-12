@@ -17,18 +17,6 @@
 //==============================================================================
 // Dynamic EQ Presets
 //==============================================================================
-struct Preset {
-    const char* name;
-    VCPluginDSP::Params params;
-};
-
-static const Preset presets[] = {
-    {"bypass", {200.0f, -6.0f, 1.0f, -12.0f, -12.0f, 10.0f, 100.0f, 100.0f, false}},
-    {"de-boom", {150.0f, 0.0f, 2.0f, -18.0f, -12.0f, 10.0f, 150.0f, 100.0f, true}},
-    {"de-harsh", {3500.0f, 0.0f, 1.5f, -15.0f, -8.0f, 5.0f, 80.0f, 100.0f, true}},
-    {"presence-boost", {4000.0f, 3.0f, 1.0f, -10.0f, 6.0f, 15.0f, 120.0f, 100.0f, true}},
-};
-
 //==============================================================================
 // Help text
 //==============================================================================
@@ -38,9 +26,7 @@ void printHelp(const char* progName) {
     std::cout << "Usage: " << progName << " <input.wav> <output.wav> [options]\n\n";
     std::cout << "Options:\n";
     std::cout << "  --help, -h            Show this help\n";
-    std::cout << "  --preset <name>       Preset (bypass, de-boom, de-harsh, presence-boost)\n";
     std::cout << "  --frequency <Hz>     Center frequency (20~20000)\n";
-    std::cout << "  --gain <dB>           Static gain (-18~+18)\n";
     std::cout << "  --q <value>           Q value (0.1~10)\n";
     std::cout << "  --threshold <dB>      Dynamic threshold (-48~0)\n";
     std::cout << "  --range <dB>          Dynamic range (-24~+24, negative=attenuate)\n";
@@ -49,8 +35,6 @@ void printHelp(const char* progName) {
     std::cout << "  --mix <0-100>         Dry/Wet mix percentage\n";
     std::cout << "  --bypass <0|1>       Bypass processing\n\n";
     std::cout << "Examples:\n";
-    std::cout << "  " << progName << " in.wav out.wav --preset de-boom\n";
-    std::cout << "  " << progName << " in.wav out.wav --frequency 200 --gain -6 --threshold -12\n";
 }
 
 //==============================================================================
@@ -77,16 +61,6 @@ std::map<std::string, std::string> parseArgs(int argc, char** argv) {
 //==============================================================================
 // Load preset by name
 //==============================================================================
-bool loadPreset(const std::string& name, VCPluginDSP::Params& p) {
-    for (const auto& preset : presets) {
-        if (name == preset.name) {
-            p = preset.params;
-            return true;
-        }
-    }
-    return false;
-}
-
 //==============================================================================
 // Main entry point
 //==============================================================================
@@ -161,15 +135,6 @@ int main(int argc, char** argv) {
     VCPluginDSP::Params params;
 
     // Load preset if specified
-    if (args.count("--preset")) {
-        std::string presetName = args["--preset"];
-        std::cout << "Preset: " << presetName << "\n";
-        if (!loadPreset(presetName, params)) {
-            std::cerr << "Error: Unknown preset\n";
-            return 1;
-        }
-        dsp.setParams(params);
-    }
 
     // Override with command line parameters
     if (args.count("--frequency")) {
@@ -178,11 +143,6 @@ int main(int argc, char** argv) {
         std::cout << "Frequency: " << params.frequency << " Hz\n";
     }
 
-    if (args.count("--gain")) {
-        params.gain = std::stof(args["--gain"]);
-        dsp.setParams(params);
-        std::cout << "Gain: " << params.gain << " dB\n";
-    }
 
     if (args.count("--q")) {
         params.q = std::stof(args["--q"]);

@@ -15,21 +15,7 @@
 #include "../DSP/VCPluginDSP.h"
 
 //==============================================================================
-// Plugin-specific presets and parameters
 //==============================================================================
-struct Preset {
-    const char* name;
-    VCSaturatorDSP::Params params;
-};
-
-static const Preset presets[] = {
-    {"bypass", {0.0f, 100.0f, 0, false}},
-    {"warm", {3.0f, 100.0f, 1, true}},         // tube, mild
-    {"tape-warm", {6.0f, 80.0f, 0, true}},     // tape, moderate
-    {"driven", {12.0f, 100.0f, 0, true}},      // tape, heavy
-    {"crunch", {18.0f, 70.0f, 2, true}},       // hard clip
-};
-
 //==============================================================================
 // Help text
 //==============================================================================
@@ -38,13 +24,11 @@ void printHelp(const char* progName) {
     std::cout << "Usage: " << progName << " <input.wav> <output.wav> [options]\n\n";
     std::cout << "Options:\n";
     std::cout << "  --help, -h           Show this help\n";
-    std::cout << "  --preset <name>      Preset (bypass, warm, tape-warm, driven, crunch)\n";
     std::cout << "  --drive <dB>         Drive amount dB (default: 0)\n";
     std::cout << "  --algorithm <0|1|2>  Algorithm: 0=tape, 1=tube, 2=clip (default: 0)\n";
     std::cout << "  --mix <0-100>       Dry/Wet mix percentage (default: 100)\n";
     std::cout << "  --bypass <0|1>      Bypass processing (default: 0)\n\n";
     std::cout << "Examples:\n";
-    std::cout << "  " << progName << " in.wav out.wav --preset tape-warm\n";
     std::cout << "  " << progName << " in.wav out.wav --drive 12 --algorithm 0 --mix 80\n";
 }
 
@@ -72,16 +56,6 @@ std::map<std::string, std::string> parseArgs(int argc, char** argv) {
 //==============================================================================
 // Load preset by name
 //==============================================================================
-bool loadPreset(const std::string& name, VCSaturatorDSP::Params& p) {
-    for (const auto& preset : presets) {
-        if (name == preset.name) {
-            p = preset.params;
-            return true;
-        }
-    }
-    return false;
-}
-
 //==============================================================================
 // Main entry point
 //==============================================================================
@@ -156,15 +130,6 @@ int main(int argc, char** argv) {
     VCSaturatorDSP::Params params;
 
     // Load preset if specified
-    if (args.count("--preset")) {
-        std::string presetName = args["--preset"];
-        std::cout << "Preset: " << presetName << "\n";
-        if (!loadPreset(presetName, params)) {
-            std::cerr << "Error: Unknown preset\n";
-            return 1;
-        }
-        dsp.setParams(params);
-    }
 
     // Override with command line parameters
     if (args.count("--drive")) {

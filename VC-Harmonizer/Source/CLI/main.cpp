@@ -22,12 +22,6 @@
 //==============================================================================
 // Presets
 //==============================================================================
-struct Preset {
-    const char* name;
-    const char* description;
-    VCPluginDSP::Params params;
-};
-
 static VCPluginDSP::Params makeDefaultParams() {
     VCPluginDSP::Params p;
     p.numVoices = 2;
@@ -103,16 +97,6 @@ static VCPluginDSP::Params makePresetSubHarmonic() {
     return p;
 }
 
-static const Preset presets[] = {
-    {"3rd-5th",      "Classic 3rd + 5th harmony",        makePreset3rd5th()},
-    {"choir",        "4-voice choir (3rd+5th+8va-5th)",  makePresetChoir()},
-    {"octave",       "Octave doubler",                    makePresetOctave()},
-    {"autokey",      "Auto key detect + 3rd+5th",        makePresetAutoKey()},
-    {"up-only",      "Upward harmonies only",             makePresetUpOnly()},
-    {"subharmonic",  "Sub-harmonic (5th+7th down)",       makePresetSubHarmonic()},
-    {"bypass",       "No processing",                     makeDefaultParams()},
-};
-
 //==============================================================================
 // Help text
 //==============================================================================
@@ -135,12 +119,10 @@ void printHelp(const char* progName) {
     std::cout << "  --midi-track <num>          MIDI track for VST3 mode (-1=off) [default: -1]\n\n";
     std::cout << "Other:\n";
     std::cout << "  --bypass <0|1>              Bypass processing [default: 0]\n";
-    std::cout << "  --preset <name>             Load a preset:\n";
     for (const auto& p : presets) {
         std::cout << "                              " << p.name << " - " << p.description << "\n";
     }
     std::cout << "\nExamples:\n";
-    std::cout << "  " << progName << " vocal.wav harmony.wav --preset 3rd-5th\n";
     std::cout << "  " << progName << " vocal.wav harmony.wav --voices 3 --intervals 3,7,12\n";
     std::cout << "  " << progName << " vocal.wav harmony.wav --autokey 1 --intervals 4,7\n";
 }
@@ -187,16 +169,6 @@ std::map<std::string, std::string> parseArgs(int argc, char** argv) {
 //==============================================================================
 // Load preset
 //==============================================================================
-bool loadPreset(const std::string& name, VCPluginDSP::Params& p) {
-    for (const auto& preset : presets) {
-        if (name == preset.name) {
-            p = preset.params;
-            return true;
-        }
-    }
-    return false;
-}
-
 //==============================================================================
 // Main entry point
 //==============================================================================
@@ -271,14 +243,6 @@ int main(int argc, char** argv) {
     VCPluginDSP::Params params = makeDefaultParams();
 
     // Load preset
-    if (args.count("--preset")) {
-        std::string presetName = args["--preset"];
-        if (!loadPreset(presetName, params)) {
-            std::cerr << "Error: Unknown preset '" << presetName << "'\n";
-            return 1;
-        }
-        std::cout << "Preset: " << presetName << "\n";
-    }
 
     // Override with CLI parameters
     if (args.count("--voices")) {

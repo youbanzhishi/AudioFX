@@ -14,21 +14,7 @@
 #include "../DSP/VCPluginDSP.h"
 
 //==============================================================================
-// Plugin-specific presets and parameters
 //==============================================================================
-struct Preset {
-    const char* name;
-    VCPluginDSP::Params params;
-};
-
-static const Preset presets[] = {
-    {"bypass", {250.0f, 30.0f, 50.0f, false}},
-    {"slapback", {80.0f, 10.0f, 40.0f, true}},
-    {"short", {150.0f, 25.0f, 50.0f, true}},
-    {"medium", {350.0f, 40.0f, 45.0f, true}},
-    {"long", {700.0f, 55.0f, 40.0f, true}},
-};
-
 //==============================================================================
 // Help text
 //==============================================================================
@@ -37,13 +23,11 @@ void printHelp(const char* progName) {
     std::cout << "Usage: " << progName << " <input.wav> <output.wav> [options]\n\n";
     std::cout << "Options:\n";
     std::cout << "  --help           Show this help\n";
-    std::cout << "  --preset <name>  Preset (bypass, slapback, short, medium, long)\n";
     std::cout << "  --time <ms>      Delay time ms (default: 250)\n";
     std::cout << "  --feedback <%>   Feedback amount (default: 30)\n";
     std::cout << "  --mix <0-100>    Dry/Wet mix (default: 50)\n";
     std::cout << "  --bypass <0|1>   Bypass processing (default: 0)\n\n";
     std::cout << "Examples:\n";
-    std::cout << "  " << progName << " in.wav out.wav --preset medium\n";
     std::cout << "  " << progName << " in.wav out.wav --time 350 --feedback 40\n";
 }
 
@@ -71,16 +55,6 @@ std::map<std::string, std::string> parseArgs(int argc, char** argv) {
 //==============================================================================
 // Load preset by name
 //==============================================================================
-bool loadPreset(const std::string& name, VCPluginDSP::Params& p) {
-    for (const auto& preset : presets) {
-        if (name == preset.name) {
-            p = preset.params;
-            return true;
-        }
-    }
-    return false;
-}
-
 //==============================================================================
 // Main entry point
 //==============================================================================
@@ -155,15 +129,6 @@ int main(int argc, char** argv) {
     VCPluginDSP::Params params;
 
     // Load preset if specified
-    if (args.count("--preset")) {
-        std::string presetName = args["--preset"];
-        std::cout << "Preset: " << presetName << "\n";
-        if (!loadPreset(presetName, params)) {
-            std::cerr << "Error: Unknown preset\n";
-            return 1;
-        }
-        dsp.setParams(params);
-    }
 
     // Override with command line parameters
     if (args.count("--time")) {
