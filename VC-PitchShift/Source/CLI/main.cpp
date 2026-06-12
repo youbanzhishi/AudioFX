@@ -17,22 +17,6 @@
 //==============================================================================
 // Presets
 //==============================================================================
-struct Preset {
-    const char* name;
-    VCPluginDSP::Params params;
-};
-
-static const Preset presets[] = {
-    {"bypass",          { 0,   0.0f, false, false}},
-    {"up1",             { 1,   0.0f, false, true }},
-    {"down1",           {-1,   0.0f, false, true }},
-    {"up3",             { 3,   0.0f, false, true }},
-    {"down3",           {-3,   0.0f, false, true }},
-    {"octave-up",       {12,   0.0f, false, true }},
-    {"octave-down",     {-12,  0.0f, false, true }},
-    {"formant-shift",   { 0,   0.0f, true,  true }},
-};
-
 //==============================================================================
 // Help / Arg parsing
 //==============================================================================
@@ -41,7 +25,6 @@ void printHelp(const char* progName) {
     std::cout << "Usage: " << progName << " <input.wav> <output.wav> [options]\n\n";
     std::cout << "Options:\n";
     std::cout << "  --help, -h           Show this help\n";
-    std::cout << "  --preset <name>      Preset\n";
     std::cout << "  --semitones <n>      Semitones (-12 ~ +12), default: 0\n";
     std::cout << "  --cents <n>          Cents (-100 ~ +100), default: 0\n";
     std::cout << "  --formant <0|1>      Formant preservation, default: 0\n";
@@ -64,16 +47,6 @@ std::map<std::string, std::string> parseArgs(int argc, char** argv) {
         }
     }
     return args;
-}
-
-bool loadPreset(const std::string& name, VCPluginDSP::Params& p) {
-    for (const auto& preset : presets) {
-        if (name == preset.name) {
-            p = preset.params;
-            return true;
-        }
-    }
-    return false;
 }
 
 float getFloatArg(const std::map<std::string, std::string>& args,
@@ -137,12 +110,6 @@ int main(int argc, char** argv) {
     dsp.prepare(reader->sampleRate, 4096);
     VCPluginDSP::Params params;
 
-    if (args.count("--preset")) {
-        std::string presetName = args["--preset"];
-        if (!loadPreset(presetName, params)) {
-            std::cerr << "Error: Unknown preset\n"; return 1;
-        }
-    }
 
     params.semitones = getIntArg(args, "--semitones", params.semitones);
     params.cents     = getFloatArg(args, "--cents", params.cents);

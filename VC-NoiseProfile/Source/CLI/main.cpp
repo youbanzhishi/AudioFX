@@ -21,20 +21,6 @@
 //==============================================================================
 // Presets
 //==============================================================================
-struct Preset {
-    const char* name;
-    VCPluginDSP::Params params;
-};
-
-static const Preset presets[] = {
-    {"denoise-mild",      {0, 1000.0f, 20000.0f, 5.0f, true, 0.0f, 0, 0.0f, true, 500.0f,  6.0f,  5.0f, -40.0f, 5.0f, 50.0f, 0}},
-    {"denoise-moderate",  {0, 1000.0f, 20000.0f, 5.0f, true, 0.0f, 0, 0.0f, true, 500.0f, 12.0f,  5.0f, -40.0f, 5.0f, 50.0f, 0}},
-    {"denoise-aggressive",{0, 1000.0f, 20000.0f, 5.0f, true, 0.0f, 0, 0.0f, true, 500.0f, 20.0f,  3.0f, -40.0f, 5.0f, 50.0f, 0}},
-    {"gate-only",         {0, 1000.0f, 20000.0f, 5.0f, true, 0.0f, 0, 0.0f, true, 500.0f, 10.0f,  5.0f, -30.0f, 5.0f, 50.0f, 1}},
-    {"denoise-gate",      {0, 1000.0f, 20000.0f, 5.0f, true, 0.0f, 0, 0.0f, true, 500.0f, 12.0f,  5.0f, -35.0f, 5.0f, 80.0f, 2}},
-    {"analyze-only",      {0, 1000.0f, 20000.0f, 5.0f, true, 0.0f, 0, 0.0f, true, 500.0f, 10.0f,  5.0f, -40.0f, 5.0f, 50.0f, 3}},
-};
-
 //==============================================================================
 // Help text
 //==============================================================================
@@ -43,7 +29,6 @@ void printHelp(const char* progName) {
     std::cout << "Usage: " << progName << " <input.wav> <output.wav> [options]\n\n";
     std::cout << "Options:\n";
     std::cout << "  --help, -h             Show this help\n";
-    std::cout << "  --preset <name>        Preset (denoise-mild, denoise-moderate, denoise-aggressive,\n";
     std::cout << "                         gate-only, denoise-gate, analyze-only)\n";
     std::cout << "  --mode <0-3>           0=denoise 1=gate 2=both 3=analyze (default: 2)\n";
     std::cout << "  --reduction <dB>       Spectral subtraction 0-30 dB (default: 10)\n";
@@ -54,7 +39,6 @@ void printHelp(const char* progName) {
     std::cout << "  --release <ms>         Gate release 1-1000 ms (default: 50)\n";
     std::cout << "  --bypass <0|1>         Bypass processing (default: 0)\n\n";
     std::cout << "Examples:\n";
-    std::cout << "  " << progName << " noisy.wav clean.wav --preset denoise-moderate\n";
     std::cout << "  " << progName << " noisy.wav clean.wav --mode 0 --reduction 12 --learn-ms 1000\n";
     std::cout << "  " << progName << " noisy.wav analysis.wav --mode 3 --learn-ms 2000\n";
 }
@@ -83,16 +67,6 @@ std::map<std::string, std::string> parseArgs(int argc, char** argv) {
 //==============================================================================
 // Load preset
 //==============================================================================
-bool loadPreset(const std::string& name, VCPluginDSP::Params& p) {
-    for (const auto& preset : presets) {
-        if (name == preset.name) {
-            p = preset.params;
-            return true;
-        }
-    }
-    return false;
-}
-
 //==============================================================================
 // Main entry point
 //==============================================================================
@@ -167,15 +141,6 @@ int main(int argc, char** argv) {
     VCPluginDSP::Params params;
 
     // Load preset if specified
-    if (args.count("--preset")) {
-        std::string presetName = args["--preset"];
-        std::cout << "Preset: " << presetName << "\n";
-        if (!loadPreset(presetName, params)) {
-            std::cerr << "Error: Unknown preset\n";
-            return 1;
-        }
-        dsp.setParams(params);
-    }
 
     // Override with command line parameters
     if (args.count("--mode")) {

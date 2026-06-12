@@ -10,27 +10,15 @@
 #include <juce_dsp/juce_dsp.h>
 #include "../DSP/VCEQDSP.h"
 
-struct Preset { const char* name; VCEQDSP::BandParams bands[VCEQDSP::kNumBands]; };
-
-static const Preset presets[] = {
-    {"vocal-boost", {{ true, VCEQDSP::FilterType::LowShelf, 80.0f, 0.707f, 1.0f }, { true, VCEQDSP::FilterType::Parametric, 300.0f, 1.0f, 0.5f }, { true, VCEQDSP::FilterType::Parametric, 1000.0f, 1.0f, -1.0f }, { true, VCEQDSP::FilterType::Parametric, 3000.0f, 1.2f, 2.0f }, { true, VCEQDSP::FilterType::HighShelf, 8000.0f, 0.707f, 2.5f }}},
-    {"vocal-cut", {{ true, VCEQDSP::FilterType::LowShelf, 80.0f, 0.707f, 0.5f }, { true, VCEQDSP::FilterType::Parametric, 300.0f, 1.0f, 0.5f }, { true, VCEQDSP::FilterType::Parametric, 1000.0f, 1.0f, 0.0f }, { true, VCEQDSP::FilterType::Parametric, 3000.0f, 1.5f, -2.0f }, { true, VCEQDSP::FilterType::HighShelf, 8000.0f, 0.707f, -3.0f }}},
-    {"warmth", {{ true, VCEQDSP::FilterType::LowShelf, 80.0f, 0.707f, 3.0f }, { true, VCEQDSP::FilterType::Parametric, 300.0f, 1.0f, 1.5f }, { true, VCEQDSP::FilterType::Parametric, 1000.0f, 1.0f, 0.0f }, { true, VCEQDSP::FilterType::Parametric, 3000.0f, 1.0f, -1.0f }, { true, VCEQDSP::FilterType::HighShelf, 8000.0f, 0.707f, -1.5f }}},
-    {"brightness", {{ true, VCEQDSP::FilterType::LowShelf, 80.0f, 0.707f, -1.0f }, { true, VCEQDSP::FilterType::Parametric, 300.0f, 1.0f, -0.5f }, { true, VCEQDSP::FilterType::Parametric, 1000.0f, 1.0f, 0.0f }, { true, VCEQDSP::FilterType::Parametric, 3000.0f, 1.2f, 1.5f }, { true, VCEQDSP::FilterType::HighShelf, 8000.0f, 0.707f, 3.0f }}},
-    {"flat", {{ true, VCEQDSP::FilterType::LowShelf, 80.0f, 0.707f, 0.0f }, { true, VCEQDSP::FilterType::Parametric, 300.0f, 1.0f, 0.0f }, { true, VCEQDSP::FilterType::Parametric, 1000.0f, 1.0f, 0.0f }, { true, VCEQDSP::FilterType::Parametric, 3000.0f, 1.0f, 0.0f }, { true, VCEQDSP::FilterType::HighShelf, 8000.0f, 0.707f, 0.0f }}}
-};
-
 void printHelp(const char* p) {
     std::cout << "VC-EQ CLI - 5段参数均衡器\n\n";
     std::cout << "用法: " << p << " <input.wav> <output.wav> [选项]\n\n";
     std::cout << "选项:\n";
     std::cout << "  --help, -h 显示帮助\n";
-    std::cout << "  --preset <name> 预设 (vocal-boost, vocal-cut, warmth, brightness, flat)\n\n";
     std::cout << "频段参数 (band0-band4):\n";
     std::cout << "  --band<N>-freq <Hz> --band<N>-gain <dB> --band<N>-q <value>\n";
     std::cout << "  --band<N>-type <0|1|2> --band<N>-on <0|1>\n\n";
     std::cout << "示例:\n";
-    std::cout << "  " << p << " in.wav out.wav --preset vocal-boost\n";
     std::cout << "  " << p << " in.wav out.wav --band3-freq 3000 --band3-gain 2.5\n";
 }
 
@@ -56,19 +44,12 @@ bool buildBandParams(const std::map<std::string, std::string>& a, int idx, VCEQD
     p = VCEQDSP::BandParams();
     p.frequency = VCEQDSP::kDefaultFrequencies[idx];
     p.q = VCEQDSP::kDefaultQ[idx];
-    p.gainDB = VCEQDSP::kDefaultGains[idx];
     p.enabled = true;
     if (a.count(pre+"-freq")) p.frequency = std::stof(a.at(pre+"-freq"));
-    if (a.count(pre+"-gain")) p.gainDB = std::stof(a.at(pre+"-gain"));
     if (a.count(pre+"-q")) p.q = std::stof(a.at(pre+"-q"));
     if (a.count(pre+"-type")) p.type = static_cast<VCEQDSP::FilterType>(std::stoi(a.at(pre+"-type")));
     if (a.count(pre+"-on")) p.enabled = (a.at(pre+"-on") == "1");
     return true;
-}
-
-bool loadPreset(const std::string& n, VCEQDSP::BandParams b[VCEQDSP::kNumBands]) {
-    for (const auto& p : presets) if (n == p.name) { for (int i=0;i<VCEQDSP::kNumBands;++i) b[i]=p.bands[i]; return true; }
-    return false;
 }
 
 int main(int c, char** v) {
@@ -95,7 +76,6 @@ int main(int c, char** v) {
     VCEQDSP::BandParams bands[VCEQDSP::kNumBands];
     
     if (a.count("--preset")) {
-        std::string pname = a["--preset"]; std::cout << "预设: " << pname << "\n";
         if (!loadPreset(pname, bands)) { std::cerr << "未知预设\n"; return 1; }
         dsp.setAllBands(bands);
     }
@@ -104,7 +84,6 @@ int main(int c, char** v) {
         VCEQDSP::BandParams bp;
         if (buildBandParams(a, i, bp)) {
             dsp.setBand(i, bp);
-            std::cout << "Band " << i << ": freq=" << bp.frequency << "Hz, gain=" << bp.gainDB << "dB, Q=" << bp.q << "\n";
         }
     }
     
