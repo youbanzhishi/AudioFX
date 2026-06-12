@@ -1,4 +1,4 @@
-// VC-Plugin CLI - JUCE-based Command Line Tool
+// VC-Chorus CLI - JUCE-based Command Line Tool
 // Requires JUCE library for WAV I/O
 
 #include <iostream>
@@ -15,20 +15,19 @@
 #include "../DSP/VCPluginDSP.h"
 
 //==============================================================================
-// Plugin-specific presets and parameters
-// TODO: Replace with your plugin's presets
-//==============================================================================
-//==============================================================================
 // Help text
 //==============================================================================
 void printHelp(const char* progName) {
-    std::cout << "VC-Plugin CLI - Audio Plugin Tool\n\n";
+    std::cout << "VC-Chorus CLI - Chorus Audio Plugin Tool\n\n";
     std::cout << "Usage: " << progName << " <input.wav> <output.wav> [options]\n\n";
     std::cout << "Options:\n";
     std::cout << "  --help, -h           Show this help\n";
-    std::cout << "  --mix <0-100>        Dry/Wet mix percentage (default: 100)\n";
+    std::cout << "  --rate <0.1-10>      LFO rate in Hz (default: 1.5)\n";
+    std::cout << "  --depth <0-100>      LFO depth %% (default: 50)\n";
+    std::cout << "  --mix <0-100>        Dry/wet mix %% (default: 50)\n";
     std::cout << "  --bypass <0|1>       Bypass processing (default: 0)\n\n";
     std::cout << "Examples:\n";
+    std::cout << "  " << progName << " in.wav out.wav --rate 2.0 --depth 70\n";
 }
 
 //==============================================================================
@@ -53,10 +52,6 @@ std::map<std::string, std::string> parseArgs(int argc, char** argv) {
 }
 
 //==============================================================================
-// Load preset by name
-//==============================================================================
-
-//==============================================================================
 // Main entry point
 //==============================================================================
 int main(int argc, char** argv) {
@@ -71,7 +66,6 @@ int main(int argc, char** argv) {
         return 0;
     }
 
-    // Parse input/output files
     std::vector<std::string> files;
     for (int i = 1; i < argc; ++i) {
         if (argv[i][0] != '-') {
@@ -88,13 +82,10 @@ int main(int argc, char** argv) {
     std::string inFile = files[0];
     std::string outFile = files[1];
 
-    std::cout << "VC-Plugin CLI (JUCE Version)\n";
+    std::cout << "VC-Chorus CLI (JUCE Version)\n";
     std::cout << "Input: " << inFile << "\n";
     std::cout << "Output: " << outFile << "\n";
 
-    //============================================================================
-    // Read audio file using JUCE
-    //============================================================================
     juce::AudioFormatManager fm;
     fm.registerBasicFormats();
 
@@ -110,7 +101,6 @@ int main(int argc, char** argv) {
     std::cout << "Channels: " << reader->numChannels << "\n";
     std::cout << "Duration: " << reader->lengthInSamples / reader->sampleRate << " seconds\n";
 
-    // Read audio data
     juce::AudioBuffer<float> buffer(
         static_cast<int>(reader->numChannels),
         static_cast<int>(reader->lengthInSamples));
@@ -129,21 +119,27 @@ int main(int argc, char** argv) {
 
     VCPluginDSP::Params params;
 
-    // Load preset if specified
+    if (args.count("--rate")) {
+        params.rate = std::stof(args["--rate"]);
+        std::cout << "Rate: " << params.rate << " Hz\n";
+    }
 
-    // Override with command line parameters
+    if (args.count("--depth")) {
+        params.depth = std::stof(args["--depth"]);
+        std::cout << "Depth: " << params.depth << " %\n";
+    }
 
     if (args.count("--mix")) {
         params.mix = std::stof(args["--mix"]);
-        dsp.setParams(params);
-        std::cout << "Mix: " << params.mix << "%\n";
+        std::cout << "Mix: " << params.mix << " %\n";
     }
 
     if (args.count("--bypass")) {
-        params.enabled = (args["--bypass"] == "1");
-        dsp.setEnabled(params.enabled);
-        std::cout << "Bypass: " << (params.enabled ? "off" : "on") << "\n";
+        params.enabled = (args["--bypass"] != "1");
+        std::cout << "Bypass: " << (!params.enabled ? "on" : "off") << "\n";
     }
+
+    dsp.setParams(params);
 
     //============================================================================
     // Process audio
@@ -160,9 +156,6 @@ int main(int argc, char** argv) {
 
     //============================================================================
     // Write output file using JUCE
-    // IMPORTANT: createWriterFor takes 6 parameters!
-    // - Parameter 5: metadata (MUST be StringPairArray, NOT StringArray!)
-    // - Parameter 6: quality (0 for PCM formats)
     //============================================================================
     juce::WavAudioFormat wavFmt;
     std::unique_ptr<juce::AudioFormatWriter> writer(
@@ -170,9 +163,9 @@ int main(int argc, char** argv) {
             new juce::FileOutputStream(juce::File(outFile)),
             reader->sampleRate,
             static_cast<unsigned int>(buffer.getNumChannels()),
-            32,  // bits per sample (32-bit float)
-            {},  // metadata - MUST be StringPairArray, not StringArray!
-            0    // quality - 0 for PCM formats
+            32,
+            {},
+            0
         )
     );
 
