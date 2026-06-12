@@ -122,6 +122,24 @@ def generate_multitone_wav(path, sr=44100, duration=1.0, amplitude=0.5):
         f.writeframes(pcm.tobytes())
 
 
+
+# ---------------------------------------------------------------------------
+# Synth (instrument) plugins - no input WAV, only output WAV
+# ---------------------------------------------------------------------------
+
+SYNTH_PLUGINS = {"VC-Drum"}
+
+def run_cli_synth(cli_path, output_wav, extra_args=None, timeout=60):
+    """Run a synth CLI (no input WAV), return (returncode, stdout, stderr)."""
+    cmd = [cli_path, output_wav]
+    if extra_args:
+        cmd.extend(extra_args)
+    result = subprocess.run(
+        cmd, capture_output=True, text=True, timeout=timeout
+    )
+    return result.returncode, result.stdout, result.stderr
+
+
 def run_cli(cli_path, input_wav, output_wav, extra_args=None, timeout=60):
     """Run the CLI, return (returncode, stdout, stderr)."""
     cmd = [cli_path, input_wav, output_wav]
@@ -169,15 +187,31 @@ class TestResults:
 # ---------------------------------------------------------------------------
 
 def tier1_runnable(results, cli_path, tmpdir):
-    impulse_path = os.path.join(tmpdir, "impulse_t1.wav")
-    output_path = os.path.join(tmpdir, "output_t1.wav")
-    generate_impulse_wav(impulse_path)
+    plugin_name = os.path.basename(os.path.dirname(cli_path))
+    is_synth = plugin_name in SYNTH_PLUGINS
 
-    rc, out, err = run_cli(cli_path, impulse_path, output_path)
-    if rc != 0:
-        results.fail("CLI executes without crash", f"exit code {rc}, stderr: {err[:200]}")
-        return False
-    results.ok("CLI executes without crash")
+    if is_synth:
+        # Synth plugins: no input WAV needed
+        output_path = os.path.join(tmpdir, "output_t1.wav")
+        if plugin_name == "VC-Drum":
+            rc, out, err = run_cli_synth(cli_path, output_path, ["--preset", "basic-beat", "--bars", "1"])
+        else:
+            rc, out, err = run_cli_synth(cli_path, output_path)
+        if rc != 0:
+            results.fail("CLI executes without crash", f"exit code {rc}, stderr: {err[:200]}")
+            return False
+        results.ok("CLI executes without crash")
+    else:
+        # Effect plugins: input WAV → output WAV
+        impulse_path = os.path.join(tmpdir, "impulse_t1.wav")
+        output_path = os.path.join(tmpdir, "output_t1.wav")
+        generate_impulse_wav(impulse_path)
+
+        rc, out, err = run_cli(cli_path, impulse_path, output_path)
+        if rc != 0:
+            results.fail("CLI executes without crash", f"exit code {rc}, stderr: {err[:200]}")
+            return False
+        results.ok("CLI executes without crash")
 
     if not os.path.isfile(output_path):
         results.fail("Output WAV file exists", "File not found")
@@ -203,8 +237,6 @@ def tier1_runnable(results, cli_path, tmpdir):
     results.ok("Output is stereo")
 
     return True
-
-
 # ---------------------------------------------------------------------------
 # Tier 2: Functional tests (plugin-specific)
 # ---------------------------------------------------------------------------
@@ -744,13 +776,52 @@ def test_vc_tune(results, cli_path, impulse_path, sine_path, multitone_path, out
 # Tier 3: Effect tests (signal chain sanity)
 # ---------------------------------------------------------------------------
 
+
+def test_vc_drum(results, cli_path, impulse_path, sine_path, multitone_path, output_path, tmpdir):
+    """VC-Drum: synth plugin - verify basic-beat preset generates audio."""
+    # VC-Drum is a synth, uses run_cli_synth
+    beat_path = os.path.join(tmpdir, "drum_beat.wav")
+    rc, stdout, _ = run_cli_synth(cli_path, beat_path, ["--preset", "basic-beat", "--bars", "1"])
+    if rc != 0:
+        results.fail("VC-Drum: basic-beat preset run", f"exit={rc}")
+        return
+    results.ok("VC-Drum: basic-beat preset executes", "exit=0")
+
+    _, beat_data = _safe_read(beat_path)
+    beat_rms = rms_db(beat_data)
+    beat_peak = peak_db(beat_data)
+
+    if beat_rms > -40:
+        results.ok("VC-Drum: basic-beat produces audio", f"RMS={beat_rms:.2f} dBFS")
+    else:
+        results.fail("VC-Drum: basic-beat produces audio", f"RMS={beat_rms:.2f} dBFS (too quiet)")
+
+    if beat_peak > -6:
+        results.ok("VC-Drum: peak level reasonable", f"peak={beat_peak:.2f} dBFS")
+    else:
+        results.fail("VC-Drum: peak level reasonable", f"peak={beat_peak:.2f} dBFS (too low)")
+
+    # Test different presets
+    kick_path = os.path.join(tmpdir, "drum_kick.wav")
+    rc, _, _ = run_cli_synth(cli_path, kick_path, ["--preset", "kick-only", "--bars", "1"])
+    if rc != 0:
+        results.fail("VC-Drum: kick-only preset", f"exit={rc}")
+    else:
+        results.ok("VC-Drum: kick-only preset executes")
+
+
 def tier3_effect(results, plugin_name, cli_path, tmpdir):
     """Verify signal-level sanity: RMS not too low, peak not too high."""
     sine_path = os.path.join(tmpdir, "sine_t3.wav")
     output_path = os.path.join(tmpdir, "output_t3.wav")
     generate_sine_wav(sine_path, freq=440.0, duration=1.0, amplitude=0.5)
 
-    rc, _, _ = run_cli(cli_path, sine_path, output_path)
+    plugin_name = os.path.basename(os.path.dirname(cli_path))
+    is_synth = plugin_name in SYNTH_PLUGINS
+    if is_synth:
+        rc, _, _ = run_cli_synth(cli_path, output_path, ["--preset", "basic-beat", "--bars", "1"] if plugin_name == "VC-Drum" else [])
+    else:
+        rc, _, _ = run_cli(cli_path, sine_path, output_path)
     if rc != 0:
         results.fail("Tier3: default parameter run", f"exit={rc}")
         return
