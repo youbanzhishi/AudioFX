@@ -24,10 +24,6 @@ struct Preset {
 };
 
 static const Preset presets[] = {
-    {"bypass", {0.0f, 100.0f, false}},
-    {"gain-3db", {3.0f, 100.0f, true}},
-    {"gain-6db", {6.0f, 100.0f, true}},
-    {"half-mix", {0.0f, 50.0f, true}},
 };
 
 //==============================================================================
@@ -166,17 +162,9 @@ int main(int argc, char** argv) {
     }
 
     // Override with command line parameters
-    if (args.count("--gain")) {
-        params.gainDB = std::stof(args["--gain"]);
-        dsp.setParams(params);
-        std::cout << "Gain: " << params.gainDB << " dB\n";
-    }
+    // --gain removed
 
-    if (args.count("--mix")) {
-        params.mix = std::stof(args["--mix"]);
-        dsp.setParams(params);
-        std::cout << "Mix: " << params.mix << "%\n";
-    }
+    // --mix removed
 
     if (args.count("--bypass")) {
         params.enabled = (args["--bypass"] == "1");
