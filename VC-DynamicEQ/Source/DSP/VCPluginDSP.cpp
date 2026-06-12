@@ -383,4 +383,3 @@ void VCPluginDSP::processInternal(float* left, float* right, int numSamples)
     }
 }
 #endif
-#endif
