@@ -1,4 +1,4 @@
-// VC-Plugin CLI - JUCE-based Command Line Tool
+// VC-Tune CLI - JUCE-based Command Line Tool
 // Requires JUCE library for WAV I/O
 
 #include <iostream>
@@ -15,22 +15,19 @@
 #include "../DSP/VCPluginDSP.h"  // defines VCTuneDSP
 
 //==============================================================================
-// Plugin-specific presets and parameters
-// TODO: Replace with your plugin's presets
-//==============================================================================
-//==============================================================================
 // Help text
 //==============================================================================
 void printHelp(const char* progName) {
-    std::cout << "VC-Plugin CLI - Audio Plugin Tool\n\n";
+    std::cout << "VC-Tune CLI - Pitch Correction Tool\n\n";
     std::cout << "Usage: " << progName << " <input.wav> <output.wav> [options]\n\n";
     std::cout << "Options:\n";
     std::cout << "  --help, -h           Show this help\n";
-    std::cout << "  --preset <name>      Preset (bypass, gain-3db, gain-6db, half-mix)\n";
-    std::cout << "  --mix <0-100>        Dry/Wet mix percentage (default: 100)\n";
+    std::cout << "  --speed <0-100>      Correction speed (default: 50)\n";
+    std::cout << "  --transpose <-12-12> Transpose in semitones (default: 0)\n";
     std::cout << "  --bypass <0|1>       Bypass processing (default: 0)\n\n";
     std::cout << "Examples:\n";
-    std::cout << "  " << progName << " in.wav out.wav --preset gain-3db\n";
+    std::cout << "  " << progName << " in.wav out.wav --speed 80\n";
+    std::cout << "  " << progName << " in.wav out.wav --transpose 2\n";
 }
 
 //==============================================================================
@@ -53,10 +50,6 @@ std::map<std::string, std::string> parseArgs(int argc, char** argv) {
     }
     return args;
 }
-
-//==============================================================================
-// Load preset by name
-//==============================================================================
 
 //==============================================================================
 // Main entry point
@@ -90,7 +83,7 @@ int main(int argc, char** argv) {
     std::string inFile = files[0];
     std::string outFile = files[1];
 
-    std::cout << "VC-Plugin CLI (JUCE Version)\n";
+    std::cout << "VC-Tune CLI (JUCE Version)\n";
     std::cout << "Input: " << inFile << "\n";
     std::cout << "Output: " << outFile << "\n";
 
@@ -131,22 +124,22 @@ int main(int argc, char** argv) {
 
     VCTuneDSP::Params params;
 
-    // Load preset if specified
-
-    // Override with command line parameters
+    if (args.count("--speed")) {
+        params.speed = std::stof(args["--speed"]);
+        std::cout << "Speed: " << params.speed << "\n";
     }
 
-    if (args.count("--mix")) {
-        params.mix = std::stof(args["--mix"]);
-        dsp.setParams(params);
-        std::cout << "Mix: " << params.mix << "%\n";
+    if (args.count("--transpose")) {
+        params.transpose = std::stof(args["--transpose"]);
+        std::cout << "Transpose: " << params.transpose << " semitones\n";
     }
 
     if (args.count("--bypass")) {
         params.bypass = (args["--bypass"] == "1");
-        dsp.setEnabled(params.bypass);
-        std::cout << "Bypass: " << (params.bypass ? "off" : "on") << "\n";
+        std::cout << "Bypass: " << (params.bypass ? "on" : "off") << "\n";
     }
+
+    dsp.setParams(params);
 
     //============================================================================
     // Process audio
@@ -163,9 +156,6 @@ int main(int argc, char** argv) {
 
     //============================================================================
     // Write output file using JUCE
-    // IMPORTANT: createWriterFor takes 6 parameters!
-    // - Parameter 5: metadata (MUST be StringPairArray, NOT StringArray!)
-    // - Parameter 6: quality (0 for PCM formats)
     //============================================================================
     juce::WavAudioFormat wavFmt;
     std::unique_ptr<juce::AudioFormatWriter> writer(
@@ -173,9 +163,9 @@ int main(int argc, char** argv) {
             new juce::FileOutputStream(juce::File(outFile)),
             reader->sampleRate,
             static_cast<unsigned int>(buffer.getNumChannels()),
-            32,  // bits per sample (32-bit float)
-            {},  // metadata - MUST be StringPairArray, not StringArray!
-            0    // quality - 0 for PCM formats
+            32,
+            {},
+            0
         )
     );
 
