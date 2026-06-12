@@ -56,6 +56,36 @@ void VCPluginDSP::process(float* left, float* right, int numSamples)
     if (!mEnabled)
         return;
 
+
+//==============================================================================
+// Band coefficient update (used by both JUCE and Standalone modes)
+//==============================================================================
+    processInternal(left, right, numSamples);
+#else
+    if ((int)mInternalBuffer.size() < numSamples * 2)
+        mInternalBuffer.resize(numSamples * 2);
+
+    float* leftBuf = mInternalBuffer.data();
+    float* rightBuf = mInternalBuffer.data() + numSamples;
+
+    for (int i = 0; i < numSamples; ++i) {
+        leftBuf[i] = left[i];
+        rightBuf[i] = right[i];
+    }
+
+    mInternalPtrs[0] = leftBuf;
+    mInternalPtrs[1] = rightBuf;
+
+    juce::dsp::AudioBlock<float> block(mInternalPtrs.data(), 2, numSamples);
+    process(block);
+
+    for (int i = 0; i < numSamples; ++i) {
+        left[i] = leftBuf[i];
+        right[i] = rightBuf[i];
+    }
+//==============================================================================
+// Standalone processing (only for CLI_Standalone mode)
+//==============================================================================
 #ifdef VC_STANDALONE
     processInternal(left, right, numSamples);
 #else
