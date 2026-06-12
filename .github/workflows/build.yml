@@ -176,19 +176,15 @@ jobs:
     needs: detect
     if: needs.detect.outputs.should_build == 'true'
     timeout-minutes: 90
-    continue-on-error: ${{ matrix.os == 'macos-13' }}
     strategy:
       fail-fast: false
       matrix:
         plugin: ${{ fromJson(needs.detect.outputs.matrix).plugin }}
-        os: [macos-13, macos-latest, windows-latest, ubuntu-latest]
+        os: [macos-latest, windows-latest, ubuntu-latest]
         include:
-          - os: macos-13
-            cmake_generator: "Ninja"
-            macos_arch: intel
           - os: macos-latest
             cmake_generator: "Ninja"
-            macos_arch: arm64
+            macos_arch: universal
           - os: windows-latest
             cmake_generator: "Visual Studio 17 2022"
           - os: ubuntu-latest
@@ -236,6 +232,7 @@ jobs:
           CMAKE_ARGS="-G '${{ matrix.cmake_generator }}' -DJUCE_PATH=../../JUCE -DCMAKE_BUILD_TYPE=Release"
           if [[ "$RUNNER_OS" == "macOS" ]]; then
             CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15"
+            CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_OSX_ARCHITECTURES='x86_64;arm64'"
           fi
           eval cmake .. $CMAKE_ARGS
 
@@ -427,23 +424,14 @@ jobs:
         shell: bash
         run: |
           mkdir -p release
-          # macOS Intel (built on macos-13 runner)
-          mkdir -p macos-intel-pkg
-          for dir in artifacts/*-macos-13; do
-            [ -d "$dir" ] || continue
-            find "$dir" \( -name "*.vst3" -o -name "*.component" \) -exec cp -r {} macos-intel-pkg/ \;
-          done
-          if ls macos-intel-pkg/*.vst3 2>/dev/null || ls macos-intel-pkg/*.component 2>/dev/null; then
-            cd macos-intel-pkg && zip -r ../release/VocalChain-macOS-Intel.zip . && cd ..
-          fi
-          # macOS ARM64 (built on macos-latest runner)
-          mkdir -p macos-arm64-pkg
+          # macOS Universal (Intel+ARM, built on macos-latest runner with cross-compilation)
+          mkdir -p macos-universal-pkg
           for dir in artifacts/*-macos-latest; do
             [ -d "$dir" ] || continue
-            find "$dir" \( -name "*.vst3" -o -name "*.component" \) -exec cp -r {} macos-arm64-pkg/ \;
+            find "$dir" \( -name "*.vst3" -o -name "*.component" \) -exec cp -r {} macos-universal-pkg/ \;
           done
-          if ls macos-arm64-pkg/*.vst3 2>/dev/null || ls macos-arm64-pkg/*.component 2>/dev/null; then
-            cd macos-arm64-pkg && zip -r ../release/VocalChain-macOS-ARM64.zip . && cd ..
+          if ls macos-universal-pkg/*.vst3 2>/dev/null || ls macos-universal-pkg/*.component 2>/dev/null; then
+            cd macos-universal-pkg && zip -r ../release/VocalChain-macOS-Universal.zip . && cd ..
           fi
           mkdir -p windows-pkg
           for dir in artifacts/*-windows-latest; do
