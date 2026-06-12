@@ -263,6 +263,7 @@ def tier2_functional(results, plugin_name, cli_path, tmpdir):
         "VC-Reverb": test_vc_reverb,
         "VC-DynamicEQ": test_vc_dynamiceq,
         "VC-Tune": test_vc_tune,
+        "VC-Drum": test_vc_drum,
     }
 
     tester = dispatch.get(plugin_name)
