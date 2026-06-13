@@ -80,3 +80,12 @@ void PluginProcessor::setStateInformation(const void* data, int sizeInBytes)
     params.lookahead = stream.readFloat();
     mDSP->setParams(params);
 }
+
+//==============================================================================
+// Plugin Entry Point
+//==============================================================================
+
+juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
+{
+    return new PluginProcessor();
+}

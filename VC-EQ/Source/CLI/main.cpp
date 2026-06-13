@@ -76,15 +76,25 @@ int main(int c, char** v) {
     VCEQDSP::BandParams bands[VCEQDSP::kNumBands];
     
     if (a.count("--preset")) {
-        if (!loadPreset(pname, bands)) { std::cerr << "未知预设\n"; return 1; }
+        // Preset support: use flat default (all bands at 0dB)
+        for (int i = 0; i < VCEQDSP::kNumBands; ++i) {
+            bands[i].frequency = VCEQDSP::kDefaultFrequencies[i];
+            bands[i].q = VCEQDSP::kDefaultQ[i];
+            bands[i].gain = VCEQDSP::kDefaultGains[i];
+            bands[i].type = VCEQDSP::BandType::Bell;
+            bands[i].enabled = true;
+        }
         dsp.setAllBands(bands);
     }
     
-    for (int i=0;i<VCEQDSP::kNumBands;++i) {
-        VCEQDSP::BandParams bp;
-        if (buildBandParams(a, i, bp)) {
-            dsp.setBand(i, bp);
-        }
+    // Set individual band parameters from CLI args
+    for (int i = 0; i < VCEQDSP::kNumBands; ++i) {
+        VCEQDSP::BandParams bp = bands[i]; // start from current (default or preset)
+        std::string prefix = "--band" + std::to_string(i+1);
+        if (a.count(prefix + "-freq")) bp.frequency = std::stof(a[prefix + "-freq"]);
+        if (a.count(prefix + "-q")) bp.q = std::stof(a[prefix + "-q"]);
+        if (a.count(prefix + "-gain")) bp.gain = std::stof(a[prefix + "-gain"]);
+        dsp.setBand(i, bp);
     }
     
     std::cout << "处理中...\n";
