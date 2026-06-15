@@ -17,9 +17,10 @@ void printHelp(const char* p) {
     std::cout << "  --help, -h 显示帮助\n";
     std::cout << "频段参数 (band0-band4):\n";
     std::cout << "  --band<N>-freq <Hz> --band<N>-gain <dB> --band<N>-q <value>\n";
-    std::cout << "  --band<N>-type <0|1|2> --band<N>-on <0|1>\n\n";
+    std::cout << "  --band<N>-type <0|1|2|3|4> --band<N>-on <0|1>\n\n";
+    std::cout << "类型: 0=LowShelf 1=HighShelf 2=Parametric 3=LowPass 4=HighPass\n\n";
     std::cout << "示例:\n";
-    std::cout << "  " << p << " in.wav out.wav --band3-freq 3000 --band3-gain 2.5\n";
+    std::cout << "  " << p << " in.wav out.wav --band2-freq 3000 --band2-gain 2.5\n";
 }
 
 std::map<std::string, std::string> parseArgs(int c, char** v) {
@@ -34,22 +35,6 @@ std::map<std::string, std::string> parseArgs(int c, char** v) {
         }
     }
     return a;
-}
-
-bool buildBandParams(const std::map<std::string, std::string>& a, int idx, VCEQDSP::BandParams& p) {
-    std::string pre = "--band" + std::to_string(idx);
-    bool has = false;
-    for (const auto& x : a) if (x.first.find(pre) == 0) { has = true; break; }
-    if (!has) return false;
-    p = VCEQDSP::BandParams();
-    p.frequency = VCEQDSP::kDefaultFrequencies[idx];
-    p.q = VCEQDSP::kDefaultQ[idx];
-    p.enabled = true;
-    if (a.count(pre+"-freq")) p.frequency = std::stof(a.at(pre+"-freq"));
-    if (a.count(pre+"-q")) p.q = std::stof(a.at(pre+"-q"));
-    if (a.count(pre+"-type")) p.type = static_cast<VCEQDSP::FilterType>(std::stoi(a.at(pre+"-type")));
-    if (a.count(pre+"-on")) p.enabled = (a.at(pre+"-on") == "1");
-    return true;
 }
 
 int main(int c, char** v) {
@@ -75,26 +60,26 @@ int main(int c, char** v) {
     dsp.prepare(r->sampleRate, 4096);
     VCEQDSP::BandParams bands[VCEQDSP::kNumBands];
     
-    if (a.count("--preset")) {
-        // Preset support: use flat default (all bands at 0dB)
-        for (int i = 0; i < VCEQDSP::kNumBands; ++i) {
-            bands[i].frequency = VCEQDSP::kDefaultFrequencies[i];
-            bands[i].q = VCEQDSP::kDefaultQ[i];
-            bands[i].gain = VCEQDSP::kDefaultGains[i];
-            bands[i].type = VCEQDSP::BandType::Bell;
-            bands[i].enabled = true;
-        }
-        dsp.setAllBands(bands);
-    }
-    
-    // Set individual band parameters from CLI args
+    // Initialize with default parameters
     for (int i = 0; i < VCEQDSP::kNumBands; ++i) {
-        VCEQDSP::BandParams bp = bands[i]; // start from current (default or preset)
-        std::string prefix = "--band" + std::to_string(i+1);
-        if (a.count(prefix + "-freq")) bp.frequency = std::stof(a[prefix + "-freq"]);
-        if (a.count(prefix + "-q")) bp.q = std::stof(a[prefix + "-q"]);
-        if (a.count(prefix + "-gain")) bp.gain = std::stof(a[prefix + "-gain"]);
-        dsp.setBand(i, bp);
+        bands[i].frequency = VCEQDSP::kDefaultFrequencies[i];
+        bands[i].q = VCEQDSP::kDefaultQ[i];
+        bands[i].gainDB = VCEQDSP::kDefaultGains[i];
+        bands[i].type = VCEQDSP::FilterType::Parametric;
+        bands[i].enabled = true;
+    }
+    dsp.setAllBands(bands);
+    
+    // Apply individual band parameter overrides from CLI args
+    for (int i = 0; i < VCEQDSP::kNumBands; ++i) {
+        std::string prefix = "--band" + std::to_string(i);
+        bool modified = false;
+        if (a.count(prefix + "-freq")) { bands[i].frequency = std::stof(a[prefix + "-freq"]); modified = true; }
+        if (a.count(prefix + "-q")) { bands[i].q = std::stof(a[prefix + "-q"]); modified = true; }
+        if (a.count(prefix + "-gain")) { bands[i].gainDB = std::stof(a[prefix + "-gain"]); modified = true; }
+        if (a.count(prefix + "-type")) { bands[i].type = static_cast<VCEQDSP::FilterType>(std::stoi(a[prefix + "-type"])); modified = true; }
+        if (a.count(prefix + "-on")) { bands[i].enabled = (a[prefix + "-on"] == "1"); modified = true; }
+        if (modified) dsp.setBand(i, bands[i]);
     }
     
     std::cout << "处理中...\n";
