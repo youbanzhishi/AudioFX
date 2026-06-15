@@ -71,9 +71,15 @@ int main(int c, char** v) {
     std::vector<float> left(numFrames, 0.0f);
     std::vector<float> right(numFrames, 0.0f);
 
-    for (int i = 0; i < numFrames; ++i) {
-        left[i] = pPCM[i * numCh];
-        right[i] = (numCh > 1) ? pPCM[i * numCh + 1] : pPCM[i * numCh];
+    if (numCh >= 2) {
+        for (int i = 0; i < numFrames; ++i) {
+            left[i] = pPCM[i * numCh];
+            right[i] = pPCM[i * numCh + 1];
+        }
+    } else {
+        for (int i = 0; i < numFrames; ++i) {
+            left[i] = right[i] = pPCM[i];
+        }
     }
     drwav_free(pPCM, nullptr);
 
@@ -96,28 +102,43 @@ int main(int c, char** v) {
     if (a.count("--mix"))       p.mix = std::stof(a["--mix"]);
     dsp.setParams(p);
 
+    std::cout << "Processing with: algorithm=" << p.algorithm
+              << " room=" << p.roomSize
+              << " decay=" << p.decayTime << "s"
+              << " mix=" << p.mix << "%\n";
+
     // Process
     dsp.process(left.data(), right.data(), numFrames);
 
-    // Interleave back
-    std::vector<float> outPCM(numFrames * 2);
-    for (int i = 0; i < numFrames; ++i) {
-        outPCM[i * 2] = left[i];
-        outPCM[i * 2 + 1] = right[i];
-    }
-
-    // Write output WAV
+    // Prepare output format
     drwav_data_format format;
     format.container = drwav_container_riff;
     format.format = DR_WAVE_FORMAT_IEEE_FLOAT;
-    format.channels = 2;
+    format.channels = (numCh >= 2) ? 2 : 1;
     format.sampleRate = sampleRate;
     format.bitsPerSample = 32;
 
-    drwav* pWav = drwav_open_file_write(outPath, &format);
-    if (!pWav) { std::cerr << "Cannot write: " << outPath << "\n"; return 1; }
-    drwav_write_pcm_frames(pWav, totalFrames, outPCM.data());
-    drwav_close(pWav);
+    drwav wav;
+    if (!drwav_init_file_write(&wav, outPath, &format, nullptr)) {
+        std::cerr << "Cannot write: " << outPath << "\n";
+        return 1;
+    }
+
+    // Interleave back
+    std::vector<float> outPCM(numFrames * format.channels);
+    if (format.channels >= 2) {
+        for (int i = 0; i < numFrames; ++i) {
+            outPCM[i * 2] = left[i];
+            outPCM[i * 2 + 1] = right[i];
+        }
+    } else {
+        for (int i = 0; i < numFrames; ++i) {
+            outPCM[i] = (left[i] + right[i]) * 0.5f;
+        }
+    }
+
+    drwav_write_pcm_frames(&wav, totalFrames, outPCM.data());
+    drwav_uninit(&wav);
 
     std::cout << "Output: " << outPath << " Done!\n";
     return 0;
