@@ -264,6 +264,7 @@ def tier2_functional(results, plugin_name, cli_path, tmpdir):
         "VC-DynamicEQ": test_vc_dynamiceq,
         "VC-Tune": test_vc_tune,
         "VC-Drum": test_vc_drum,
+        "VC-Hall480": test_vc_hall480,
     }
 
     tester = dispatch.get(plugin_name)
@@ -809,6 +810,57 @@ def test_vc_drum(results, cli_path, impulse_path, sine_path, multitone_path, out
         results.fail("VC-Drum: kick-only preset", f"exit={rc}")
     else:
         results.ok("VC-Drum: kick-only preset executes")
+
+
+# -- VC-Hall480 ------------------------------------------------------------
+
+def test_vc_hall480(results, cli_path, impulse_path, sine_path, multitone_path, output_path, tmpdir):
+    """VC-Hall480: Lexicon 480L-class reverb - verify algorithms produce reverb tail."""
+    long_impulse_path = os.path.join(tmpdir, "impulse_hall480.wav")
+    generate_impulse_wav(long_impulse_path, duration_samples=44100)
+
+    # Test Hall algorithm with --mix 50
+    rc, _, _ = run_cli(cli_path, long_impulse_path, output_path, ["--mix", "50", "--algorithm", "0"])
+    if rc != 0:
+        results.fail("VC-Hall480: Hall algorithm run", f"exit={rc}")
+        _safe_remove(long_impulse_path)
+        return
+    _, data = _safe_read(output_path)
+
+    tail_start = min(len(data), 22050)
+    if tail_start < len(data):
+        tail = data[tail_start:, 0]
+        tail_rms = np.sqrt(np.mean(tail ** 2))
+        if tail_rms > 1e-5:
+            results.ok("VC-Hall480: Hall reverb tail present",
+                        f"tail_RMS={db(tail_rms):.2f} dBFS")
+        else:
+            results.fail("VC-Hall480: Hall reverb tail present",
+                          f"tail_RMS={db(tail_rms):.2f} dBFS (too low)")
+
+    # Test Random Hall algorithm
+    rc, _, _ = run_cli(cli_path, long_impulse_path, output_path, ["--mix", "50", "--algorithm", "1"])
+    if rc != 0:
+        results.fail("VC-Hall480: Random Hall algorithm run", f"exit={rc}")
+    else:
+        results.ok("VC-Hall480: Random Hall algorithm executes")
+
+    # Test Plate algorithm
+    rc, _, _ = run_cli(cli_path, long_impulse_path, output_path, ["--mix", "50", "--algorithm", "2"])
+    if rc != 0:
+        results.fail("VC-Hall480: Plate algorithm run", f"exit={rc}")
+    else:
+        results.ok("VC-Hall480: Plate algorithm executes")
+
+    # Test high decay + chorus
+    rc, _, _ = run_cli(cli_path, long_impulse_path, output_path,
+                       ["--mix", "40", "--decay", "5.0", "--chorusrate", "0.8", "--chorusdepth", "50"])
+    if rc != 0:
+        results.fail("VC-Hall480: long decay + chorus run", f"exit={rc}")
+    else:
+        results.ok("VC-Hall480: long decay + chorus executes")
+
+    _safe_remove(long_impulse_path)
 
 
 def tier3_effect(results, plugin_name, cli_path, tmpdir):
