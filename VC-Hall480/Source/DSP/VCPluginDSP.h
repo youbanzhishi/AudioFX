@@ -527,5 +527,9 @@ private:
     float mLoDecayHPState[2] = {0.0f, 0.0f};
     float mLoDecayHPCoeff = 0.0f;
 
+    // Feedback accumulators — store processed feedback for next-sample injection
+    float mFeedbackL = 0.0f;
+    float mFeedbackR = 0.0f;
+
     VC_DECLARE_NON_COPYABLE(VCPluginDSP)
 };

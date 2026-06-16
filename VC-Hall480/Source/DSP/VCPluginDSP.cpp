@@ -294,12 +294,13 @@ void VCPluginDSP::processInternal(float* left, float* right, int numSamples)
         //==============================================================
         // Late reverb — nested allpass ring with cross-coupling
         //==============================================================
-        // Input to late reverb: mix of dry input and early reflections
-        float lateInput = delayedInput * 0.5f + (earlyL + earlyR) * 0.25f;
+        // Input to late reverb: mix of dry input, early reflections, and feedback
+        float lateInL = delayedInput * 0.5f + (earlyL + earlyR) * 0.25f + mFeedbackL;
+        float lateInR = delayedInput * 0.5f + (earlyL + earlyR) * 0.25f + mFeedbackR;
 
         // Process through left and right reverb chains
-        float lateOutL = mLateL.process(lateInput, mSampleRate);
-        float lateOutR = mLateR.process(lateInput, mSampleRate);
+        float lateOutL = mLateL.process(lateInL, mSampleRate);
+        float lateOutR = mLateR.process(lateInR, mSampleRate);
 
         // Global feedback with cross-coupling (Householder-inspired)
         // Feed back: L output → R input, R output → L input
@@ -318,11 +319,9 @@ void VCPluginDSP::processInternal(float* left, float* right, int numSamples)
             fbR_processed = fbR_processed - mLoDecayHPState[1];
         }
 
-        // Re-inject feedback into the allpass chain
-        // This is done by adding to the input of the next sample's processing
-        // Since process() is called per-sample, we add feedback to the input
-        // For simplicity, the feedback is accumulated via the delay lines' circular buffers
-        // The actual feedback injection happens by feeding back to the chain's input
+        // Store feedback for next-sample injection (completes the feedback loop)
+        mFeedbackL = fbL_processed;
+        mFeedbackR = fbR_processed;
 
         // Late reverb output with scaling
         float wetL = earlyL * earlyLevel + lateOutL * lateScale;
@@ -399,6 +398,7 @@ void VCPluginDSP::reset()
     mWetHPFState[0] = 0.0f; mWetHPFState[1] = 0.0f;
     mLoDecayHPState[0] = 0.0f; mLoDecayHPState[1] = 0.0f;
     mEnvelopeState[0] = 0.0f; mEnvelopeState[1] = 0.0f;
+    mFeedbackL = 0.0f; mFeedbackR = 0.0f;
 
     updateParameters();
 }
