@@ -371,10 +371,14 @@ void VCPluginDSP::processInternal(float* left, float* right, int numSamples)
         wetFilteredR = wetFilteredR - mWetHPFState[1];
 
         //==============================================================
-        // Dry/Wet mix
+        // Dry/Wet mix + soft-clip protection
         //==============================================================
         float outL = dryL * (1.0f - mixFactor) + wetFilteredL * mixFactor;
         float outR = dryR * (1.0f - mixFactor) + wetFilteredR * mixFactor;
+
+        // Soft-clip to prevent digital clipping (tanh saturation)
+        outL = std::tanh(outL);
+        outR = std::tanh(outR);
 
         left[i] = outL;
         right[i] = outR;
