@@ -2,7 +2,7 @@
 
 //==============================================================================
 // JUCE Audio Processor Header
-// Template for VST3 Audio Plugin Development
+// VC-SurgicalDeEsser: Two-pass surgical de-esser
 //==============================================================================
 
 #include <juce_audio_processors/juce_audio_processors.h>
@@ -13,13 +13,15 @@
 
 //==============================================================================
 // Parameter IDs
-// TODO: Replace with your plugin's parameter IDs
 //==============================================================================
 namespace ParameterIDs
 {
     static const juce::String bypass = "bypass";
-    static const juce::String gain = "gain";
-    static const juce::String mix = "mix";
+    static const juce::String threshold = "threshold";
+    static const juce::String reduction = "reduction";
+    static const juce::String freqLow = "freqLow";
+    static const juce::String freqHigh = "freqHigh";
+    static const juce::String mode = "mode";
 }
 
 //==============================================================================
@@ -33,15 +35,15 @@ namespace Config
 //==============================================================================
 // Main Audio Processor Class
 //==============================================================================
-class __PLUGIN_NAME__Processor : public juce::AudioProcessor,
-                                  public juce::AudioProcessorValueTreeState::Listener
+class VCSurgicalDeEsserProcessor : public juce::AudioProcessor,
+                                    public juce::AudioProcessorValueTreeState::Listener
 {
 public:
     //============================================================================
     // Construction / Destruction
     //============================================================================
-    __PLUGIN_NAME__Processor();
-    ~__PLUGIN_NAME__Processor() override;
+    VCSurgicalDeEsserProcessor();
+    ~VCSurgicalDeEsserProcessor() override;
 
     //============================================================================
     // JUCE AudioProcessor Interface
@@ -63,7 +65,7 @@ public:
     //============================================================================
     // Plugin Information
     //============================================================================
-    const juce::String getName() const override { return "__PLUGIN_NAME__"; }
+    const juce::String getName() const override { return "VC-SurgicalDeEsser"; }
     bool acceptsMidi() const override { return false; }
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
@@ -119,8 +121,6 @@ private:
     // Processing State
     //============================================================================
     bool mBypass = false;
-    float mGainDB = 0.0f;
-    float mMix = 100.0f;
 
     //============================================================================
     // AudioProcessorValueTreeState
@@ -130,5 +130,5 @@ private:
     //============================================================================
     // Non-copyable
     //============================================================================
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(__PLUGIN_NAME__Processor)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(VCSurgicalDeEsserProcessor)
 };

@@ -5,14 +5,13 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 //==============================================================================
-// Minimal Plugin Editor
-// TODO: Expand with your plugin's UI controls
+// VC-SurgicalDeEsser Plugin Editor
 //==============================================================================
-class __PLUGIN_NAME__Editor : public juce::AudioProcessorEditor
+class VCSurgicalDeEsserEditor : public juce::AudioProcessorEditor
 {
 public:
-    __PLUGIN_NAME__Editor(__PLUGIN_NAME__Processor&);
-    ~__PLUGIN_NAME__Editor() override;
+    VCSurgicalDeEsserEditor(VCSurgicalDeEsserProcessor&);
+    ~VCSurgicalDeEsserEditor() override;
 
     //============================================================================
     // Painting and Layout
@@ -22,20 +21,47 @@ public:
 
 private:
     //============================================================================
-    // TODO: Define control members
-    // Example:
-    // juce::Label gainLabel;
-    // juce::Slider gainSlider;
-    // std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> gainAttachment;
+    // UI Controls
     //============================================================================
+    juce::Label titleLabel;
+    juce::Label subtitleLabel;
+
+    // Threshold
+    juce::Label thresholdLabel;
+    juce::Slider thresholdSlider;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> thresholdAttachment;
+
+    // Reduction
+    juce::Label reductionLabel;
+    juce::Slider reductionSlider;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> reductionAttachment;
+
+    // Frequency Low
+    juce::Label freqLowLabel;
+    juce::Slider freqLowSlider;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> freqLowAttachment;
+
+    // Frequency High
+    juce::Label freqHighLabel;
+    juce::Slider freqHighSlider;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> freqHighAttachment;
+
+    // Mode selector
+    juce::Label modeLabel;
+    juce::ComboBox modeBox;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> modeAttachment;
+
+    // Bypass button
+    juce::TextButton bypassButton;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> bypassAttachment;
 
     //============================================================================
     // Processor reference
     //============================================================================
-    __PLUGIN_NAME__Processor& processor;
+    VCSurgicalDeEsserProcessor& processor;
 
     //============================================================================
     // Non-copyable
     //============================================================================
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(__PLUGIN_NAME__Editor)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(VCSurgicalDeEsserEditor)
 };

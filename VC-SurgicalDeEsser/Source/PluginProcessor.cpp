@@ -6,20 +6,23 @@ using namespace juce;
 //==============================================================================
 // Construction / Destruction
 //==============================================================================
-__PLUGIN_NAME__Processor::__PLUGIN_NAME__Processor()
+VCSurgicalDeEsserProcessor::VCSurgicalDeEsserProcessor()
     : AudioProcessor(BusesProperties()
                      .withInput("Input", AudioChannelSet::stereo())
                      .withOutput("Output", AudioChannelSet::stereo()))
-    , mAPVTS(*this, nullptr, Identifier("__PLUGIN_NAME__Parameters"),
+    , mAPVTS(*this, nullptr, Identifier("VCSurgicalDeEsserParameters"),
              createParameterLayout())
 {
     // Register parameter listeners
     mAPVTS.addParameterListener(ParameterIDs::bypass, this);
-    mAPVTS.addParameterListener(ParameterIDs::gain, this);
-    mAPVTS.addParameterListener(ParameterIDs::mix, this);
+    mAPVTS.addParameterListener(ParameterIDs::threshold, this);
+    mAPVTS.addParameterListener(ParameterIDs::reduction, this);
+    mAPVTS.addParameterListener(ParameterIDs::freqLow, this);
+    mAPVTS.addParameterListener(ParameterIDs::freqHigh, this);
+    mAPVTS.addParameterListener(ParameterIDs::mode, this);
 }
 
-__PLUGIN_NAME__Processor::~__PLUGIN_NAME__Processor()
+VCSurgicalDeEsserProcessor::~VCSurgicalDeEsserProcessor()
 {
 }
 
@@ -27,7 +30,7 @@ __PLUGIN_NAME__Processor::~__PLUGIN_NAME__Processor()
 // Parameter Layout
 //==============================================================================
 AudioProcessorValueTreeState::ParameterLayout
-__PLUGIN_NAME__Processor::createParameterLayout()
+VCSurgicalDeEsserProcessor::createParameterLayout()
 {
     std::vector<std::unique_ptr<RangedAudioParameter>> params;
 
@@ -35,15 +38,29 @@ __PLUGIN_NAME__Processor::createParameterLayout()
     params.push_back(std::make_unique<AudioParameterBool>(
         ParameterIDs::bypass, "Bypass", false));
 
-    // Gain
+    // Threshold (-60~0 dBFS)
     params.push_back(std::make_unique<AudioParameterFloat>(
-        ParameterIDs::gain, "Gain",
-        NormalisableRange<float>(-24.0f, 24.0f), 0.0f, "dB"));
+        ParameterIDs::threshold, "Threshold",
+        NormalisableRange<float>(-60.0f, 0.0f), -30.0f, "dBFS"));
 
-    // Mix
+    // Reduction (0~20 dB)
     params.push_back(std::make_unique<AudioParameterFloat>(
-        ParameterIDs::mix, "Mix",
-        NormalisableRange<float>(0.0f, 100.0f), 100.0f, "%"));
+        ParameterIDs::reduction, "Reduction",
+        NormalisableRange<float>(0.0f, 20.0f), 6.0f, "dB"));
+
+    // Frequency Low (2000~8000 Hz)
+    params.push_back(std::make_unique<AudioParameterFloat>(
+        ParameterIDs::freqLow, "Freq Low",
+        NormalisableRange<float>(2000.0f, 8000.0f), 5000.0f, "Hz"));
+
+    // Frequency High (5000~14000 Hz)
+    params.push_back(std::make_unique<AudioParameterFloat>(
+        ParameterIDs::freqHigh, "Freq High",
+        NormalisableRange<float>(5000.0f, 14000.0f), 9000.0f, "Hz"));
+
+    // Mode (0=Gain, 1=DynEQ)
+    params.push_back(std::make_unique<AudioParameterInt>(
+        ParameterIDs::mode, "Mode", 0, 1, 0));
 
     return {params.begin(), params.end()};
 }
@@ -51,7 +68,7 @@ __PLUGIN_NAME__Processor::createParameterLayout()
 //==============================================================================
 // Prepare to Play
 //==============================================================================
-void __PLUGIN_NAME__Processor::prepareToPlay(double sampleRate, int samplesPerBlock)
+void VCSurgicalDeEsserProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
     mProcessSpec.sampleRate = sampleRate;
     mProcessSpec.maximumBlockSize = static_cast<uint32_t>(samplesPerBlock);
@@ -60,7 +77,7 @@ void __PLUGIN_NAME__Processor::prepareToPlay(double sampleRate, int samplesPerBl
     mDSP.prepare(sampleRate, samplesPerBlock);
 }
 
-void __PLUGIN_NAME__Processor::releaseResources()
+void VCSurgicalDeEsserProcessor::releaseResources()
 {
     mDSP.reset();
 }
@@ -70,10 +87,9 @@ void __PLUGIN_NAME__Processor::releaseResources()
 // IMPORTANT: In JUCE 8, layouts.inputBuses[] returns by value (not reference)
 // Use const auto& or auto to capture, NOT auto&
 //==============================================================================
-bool __PLUGIN_NAME__Processor::isBusesLayoutSupported(const BusesLayout& layouts) const
+bool VCSurgicalDeEsserProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
 {
     // Only support stereo layout
-    // Note: layouts.inputBuses[0] returns by value in JUCE 8
     const auto inputLayout = layouts.inputBuses[0];
     const auto outputLayout = layouts.outputBuses[0];
 
@@ -84,7 +100,7 @@ bool __PLUGIN_NAME__Processor::isBusesLayoutSupported(const BusesLayout& layouts
 //==============================================================================
 // Process Audio Block
 //==============================================================================
-void __PLUGIN_NAME__Processor::processBlock(AudioBuffer<float>& buffer,
+void VCSurgicalDeEsserProcessor::processBlock(AudioBuffer<float>& buffer,
                                               MidiBuffer&)
 {
     if (mBypass)
@@ -102,20 +118,28 @@ void __PLUGIN_NAME__Processor::processBlock(AudioBuffer<float>& buffer,
 //==============================================================================
 // Parameter Changed Callback
 //==============================================================================
-void __PLUGIN_NAME__Processor::parameterChanged(const String& parameterID,
+void VCSurgicalDeEsserProcessor::parameterChanged(const String& parameterID,
                                                   float newValue)
 {
+    VCPluginDSP::Params p = mDSP.getParams();
+
     if (parameterID == ParameterIDs::bypass) {
         mBypass = newValue > 0.5f;
         mDSP.setEnabled(!mBypass);
-    } else if (parameterID == ParameterIDs::gain) {
-        mGainDB = newValue;
-        VCPluginDSP::Params p = mDSP.getParams();
-        // p.gainDB removed - SurgicalDeEsser uses reduction
+    } else if (parameterID == ParameterIDs::threshold) {
+        p.threshold = newValue;
         mDSP.setParams(p);
-    } else if (parameterID == ParameterIDs::mix) {
-        mMix = newValue;
-        VCPluginDSP::Params p = mDSP.getParams();
+    } else if (parameterID == ParameterIDs::reduction) {
+        p.reduction = newValue;
+        mDSP.setParams(p);
+    } else if (parameterID == ParameterIDs::freqLow) {
+        p.freqLow = newValue;
+        mDSP.setParams(p);
+    } else if (parameterID == ParameterIDs::freqHigh) {
+        p.freqHigh = newValue;
+        mDSP.setParams(p);
+    } else if (parameterID == ParameterIDs::mode) {
+        p.mode = static_cast<int>(newValue);
         mDSP.setParams(p);
     }
 }
@@ -123,7 +147,7 @@ void __PLUGIN_NAME__Processor::parameterChanged(const String& parameterID,
 //==============================================================================
 // State Information
 //==============================================================================
-void __PLUGIN_NAME__Processor::getStateInformation(MemoryBlock& destData)
+void VCSurgicalDeEsserProcessor::getStateInformation(MemoryBlock& destData)
 {
     auto state = mAPVTS.copyState();
     std::unique_ptr<XmlElement> xml(state.createXml());
@@ -133,7 +157,7 @@ void __PLUGIN_NAME__Processor::getStateInformation(MemoryBlock& destData)
     }
 }
 
-void __PLUGIN_NAME__Processor::setStateInformation(const void* data,
+void VCSurgicalDeEsserProcessor::setStateInformation(const void* data,
                                                       int sizeInBytes)
 {
     auto xmlState = parseXML(String(static_cast<const char*>(data), sizeInBytes));
@@ -144,9 +168,9 @@ void __PLUGIN_NAME__Processor::setStateInformation(const void* data,
 //==============================================================================
 // Create Editor
 //==============================================================================
-AudioProcessorEditor* __PLUGIN_NAME__Processor::createEditor()
+AudioProcessorEditor* VCSurgicalDeEsserProcessor::createEditor()
 {
-    return new __PLUGIN_NAME__Editor(*this);
+    return new VCSurgicalDeEsserEditor(*this);
 }
 
 //==============================================================================
@@ -154,5 +178,5 @@ AudioProcessorEditor* __PLUGIN_NAME__Processor::createEditor()
 //==============================================================================
 AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
-    return new __PLUGIN_NAME__Processor();
+    return new VCSurgicalDeEsserProcessor();
 }
