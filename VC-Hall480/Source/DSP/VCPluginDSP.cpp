@@ -256,9 +256,9 @@ void VCPluginDSP::processInternal(float* left, float* right, int numSamples)
     ReverbAlgorithm algo = static_cast<ReverbAlgorithm>(VC_JCLAMP(mParams.algorithm, 0, 2));
 
     // Scale factor for late reverb output
-    const float lateScale = 0.7f;
+    const float lateScale = 1.0f;
     // Early reflections level (reduced for Plate algorithm)
-    float earlyLevel = (algo == ReverbAlgorithm::Plate) ? 0.1f : 0.35f;
+    float earlyLevel = (algo == ReverbAlgorithm::Plate) ? 0.2f : 0.5f;
 
     for (int i = 0; i < numSamples; ++i) {
         float inL = left[i];
@@ -295,8 +295,8 @@ void VCPluginDSP::processInternal(float* left, float* right, int numSamples)
         // Late reverb — nested allpass ring with cross-coupling
         //==============================================================
         // Input to late reverb: mix of dry input, early reflections, and feedback
-        float lateInL = delayedInput * 0.5f + (earlyL + earlyR) * 0.25f + mFeedbackL;
-        float lateInR = delayedInput * 0.5f + (earlyL + earlyR) * 0.25f + mFeedbackR;
+        float lateInL = delayedInput + (earlyL + earlyR) * 0.3f + mFeedbackL;
+        float lateInR = delayedInput + (earlyL + earlyR) * 0.3f + mFeedbackR;
 
         // Process through left and right reverb chains
         float lateOutL = mLateL.process(lateInL, mSampleRate);
@@ -376,9 +376,18 @@ void VCPluginDSP::processInternal(float* left, float* right, int numSamples)
         float outL = dryL * (1.0f - mixFactor) + wetFilteredL * mixFactor;
         float outR = dryR * (1.0f - mixFactor) + wetFilteredR * mixFactor;
 
-        // Soft-clip to prevent digital clipping (tanh saturation)
-        outL = std::tanh(outL);
-        outR = std::tanh(outR);
+        // Soft-clip protection: only apply when signal approaches clipping
+        // This avoids tanh distortion on normal-level signals while preventing digital clips
+        auto safeClip = [](float x) -> float {
+            float ax = std::abs(x);
+            if (ax < 0.9f) return x;  // pass through unchanged below -1dBFS
+            float sign = (x >= 0.0f) ? 1.0f : -1.0f;
+            // Smooth transition from 0.9 to 1.0 using soft saturation
+            float over = (ax - 0.9f) / 0.1f;  // 0..1 range for 0.9..1.0
+            return sign * (0.9f + 0.1f * std::tanh(over));
+        };
+        outL = safeClip(outL);
+        outR = safeClip(outR);
 
         left[i] = outL;
         right[i] = outR;
