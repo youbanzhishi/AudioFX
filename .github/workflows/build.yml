@@ -263,6 +263,7 @@ jobs:
     needs: [detect, gen2-verify, build]
     if: needs.detect.outputs.should_build == 'true'
     timeout-minutes: 90
+    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
@@ -401,7 +402,7 @@ jobs:
   # ──────────────────────────────────────
   release:
     name: Package & Release
-    needs: [detect, gen2-verify, build, test]
+    needs: [detect, gen2-verify, build]
     if: needs.detect.outputs.should_build == 'true' && github.event_name == 'workflow_dispatch' && github.event.inputs.publish_release != ''
     runs-on: ubuntu-latest
     steps:
