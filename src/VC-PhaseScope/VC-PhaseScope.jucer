@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<JUCERPROJECT 
+  name="VC-PhaseScope" 
+  version="1.0.0" 
+  bundleIdentifier="com.audiofx.vcphasescope"
+  companyName="AudioFX"
+  companyWebsite="https://github.com/youbanzhishi/AudioFX"
+  companyEmail=""
+
+  description="相位抵消检测插件 - 实时相位分析 + 底鼓贝斯冲突检测"
+  licenseType="MIT"
+
+  includePaths="../../include"
+  userIncludePaths="../../include"
+
+  pluginFormats="VST3"
+  pluginName="VC-PhaseScope"
+  pluginDescription="相位抵消检测插件"
+  pluginManufacturer="AudioFX"
+  pluginManufacturerCode="AFX"
+  pluginCode="VPS1"
+  pluginChannelConfigs="2-2"
+
+  CXXLanguageStandard="17"
+ >
+  
+  <MODULES>
+    <juce_core />
+    <juce_audio_processors />
+    <juce_gui_basics />
+    <juce_audio_utils />
+  </MODULES>
+
+  <FILES>
+    <FILE id="PhsScp1" name="VC-PhaseScope.h" compile="0" resource="0">
+      <PATH>../../include/VC-PhaseScope.h</PATH>
+    </FILE>
+    <FILE id="PhsScp2" name="Plugin.cpp" compile="1" resource="0">
+      <PATH>src/VC-PhaseScope/Plugin.cpp</PATH>
+    </FILE>
+    <FILE id="PhsScp3" name="ProjectInfo.h" compile="0" resource="0">
+      <PATH>src/VC-PhaseScope/ProjectInfo.h</PATH>
+    </FILE>
+  </FILES>
+
+  <CONFIGURATIONS>
+    <CONFIGURATION name="Debug" isDebug="1" />
+    <CONFIGURATION name="Release" isDebug="0" optimization="3" />
+  </CONFIGURATIONS>
+
+</JUCERPROJECT>
