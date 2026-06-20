@@ -26,6 +26,10 @@ VCHall480Processor::VCHall480Processor()
     mAPVTS.addParameterListener(ParameterIDs::chorusRate, this);
     mAPVTS.addParameterListener(ParameterIDs::chorusDepth, this);
     mAPVTS.addParameterListener(ParameterIDs::mix, this);
+
+    // Explicitly initialise DSP state to match the default bypass value.
+    // Listeners only fire on *changes*, so this is the only call site on load.
+    mDSP.setEnabled(!mBypass);
 }
 
 VCHall480Processor::~VCHall480Processor()
@@ -141,6 +145,8 @@ bool VCHall480Processor::isBusesLayoutSupported(const BusesLayout& layouts) cons
 //==============================================================================
 void VCHall480Processor::processBlock(AudioBuffer<float>& buffer, MidiBuffer&)
 {
+    // Passthrough when bypassed: the buffer already contains the input audio,
+    // so we simply leave it untouched rather than silently discarding it.
     if (mBypass)
         return;
 
