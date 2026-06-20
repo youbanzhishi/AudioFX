@@ -37,7 +37,7 @@ VCHall480Editor::VCHall480Editor(VCHall480Processor& p)
     titleLabel.setColour(Label::textColourId, Colour(Colors::titleText));
 
     addAndMakeVisible(subtitleLabel);
-    subtitleLabel.setText("Lexicon 480L-Class Reverb", dontSendNotification);
+    subtitleLabel.setText("Lexicon 480L 类混响", dontSendNotification);
     subtitleLabel.setFont(Font(11.0f));
     subtitleLabel.setColour(Label::textColourId, Colour(Colors::labelText));
 
@@ -48,9 +48,9 @@ VCHall480Editor::VCHall480Editor(VCHall480Processor& p)
     algoLabel.setColour(Label::textColourId, Colour(Colors::labelText));
 
     addAndMakeVisible(algoBox);
-    algoBox.addItem("Hall", 1);
-    algoBox.addItem("Random Hall", 2);
-    algoBox.addItem("Plate", 3);
+    algoBox.addItem("大厅", 1);
+    algoBox.addItem("随机大厅", 2);
+    algoBox.addItem("板式", 3);
     algoAttachment.reset(new AudioProcessorValueTreeState::ComboBoxAttachment(
         processor.getAPVTS(), ParameterIDs::algorithm, algoBox));
 
@@ -77,21 +77,21 @@ VCHall480Editor::VCHall480Editor(VCHall480Processor& p)
     };
 
     // Row 1: Room, Decay, Diffusion
-    makeKnob(roomLabel, roomSlider, "Room", Colors::knobFill1, roomAttachment, ParameterIDs::room);
-    makeKnob(decayLabel, decaySlider, "Decay", Colors::knobFill2, decayAttachment, ParameterIDs::decay);
-    makeKnob(diffusionLabel, diffusionSlider, "Diffuse", Colors::knobFill3, diffusionAttachment, ParameterIDs::diffusion);
+    makeKnob(roomLabel, roomSlider, "空间大小", Colors::knobFill1, roomAttachment, ParameterIDs::room);
+    makeKnob(decayLabel, decaySlider, "衰减时间", Colors::knobFill2, decayAttachment, ParameterIDs::decay);
+    makeKnob(diffusionLabel, diffusionSlider, "扩散", Colors::knobFill3, diffusionAttachment, ParameterIDs::diffusion);
 
     // Row 2: Shape, Spread, Hi Decay, Lo Decay
-    makeKnob(shapeLabel, shapeSlider, "Shape", Colors::knobFill4, shapeAttachment, ParameterIDs::shape);
-    makeKnob(spreadLabel, spreadSlider, "Spread", Colors::knobFill5, spreadAttachment, ParameterIDs::spread);
-    makeKnob(hiDecayLabel, hiDecaySlider, "Hi Decay", Colors::knobFill6, hiDecayAttachment, ParameterIDs::hiDecay);
-    makeKnob(loDecayLabel, loDecaySlider, "Lo Decay", Colors::knobFill1, loDecayAttachment, ParameterIDs::loDecay);
+    makeKnob(shapeLabel, shapeSlider, "塑形", Colors::knobFill4, shapeAttachment, ParameterIDs::shape);
+    makeKnob(spreadLabel, spreadSlider, "展宽", Colors::knobFill5, spreadAttachment, ParameterIDs::spread);
+    makeKnob(hiDecayLabel, hiDecaySlider, "高频衰减", Colors::knobFill6, hiDecayAttachment, ParameterIDs::hiDecay);
+    makeKnob(loDecayLabel, loDecaySlider, "低频衰减", Colors::knobFill1, loDecayAttachment, ParameterIDs::loDecay);
 
     // Row 3: Chorus Rate, Chorus Depth, Pre-Delay, Mix
-    makeKnob(chorusRateLabel, chorusRateSlider, "Ch Rate", Colors::knobFill2, chorusRateAttachment, ParameterIDs::chorusRate);
-    makeKnob(chorusDepthLabel, chorusDepthSlider, "Ch Depth", Colors::knobFill3, chorusDepthAttachment, ParameterIDs::chorusDepth);
-    makeKnob(preDelayLabel, preDelaySlider, "Pre-Dly", Colors::knobFill4, preDelayAttachment, ParameterIDs::preDelay);
-    makeKnob(mixLabel, mixSlider, "Mix", Colors::knobFill5, mixAttachment, ParameterIDs::mix);
+    makeKnob(chorusRateLabel, chorusRateSlider, "合唱速率", Colors::knobFill2, chorusRateAttachment, ParameterIDs::chorusRate);
+    makeKnob(chorusDepthLabel, chorusDepthSlider, "合唱深度", Colors::knobFill3, chorusDepthAttachment, ParameterIDs::chorusDepth);
+    makeKnob(preDelayLabel, preDelaySlider, "预延时", Colors::knobFill4, preDelayAttachment, ParameterIDs::preDelay);
+    makeKnob(mixLabel, mixSlider, "干湿比", Colors::knobFill5, mixAttachment, ParameterIDs::mix);
 
     // Bypass
     addAndMakeVisible(bypassButton);
