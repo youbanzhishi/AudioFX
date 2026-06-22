@@ -24,6 +24,9 @@ concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: false
 
+permissions:
+  contents: write
+
 env:
   JUCE_VERSION: '8.0.12'
   MACOSX_DEPLOYMENT_TARGET: '10.15'
@@ -461,3 +464,4 @@ jobs:
           - **VocalChain-Linux.zip** - All VST3 plugins for Linux
 
           Built with JUCE ${{ env.JUCE_VERSION }}"
+
